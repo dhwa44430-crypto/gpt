@@ -334,7 +334,7 @@ class AdventurePainter extends CustomPainter {
     canvas.drawPath(rightLeg,outline); canvas.drawPath(rightLeg,pants);
     canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(17+(running?8*swing:0),99,28,14),const Radius.circular(6)),outline);
     canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(17+(running?8*swing:0),100,26,11),const Radius.circular(5)),boot);
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(68-(running?8*swing:0),101,29,14),outline);
+    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(68-(running?8*swing:0),101,29,14),const Radius.circular(6)),outline);
     canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(69-(running?8*swing:0),102,27,11),const Radius.circular(5)),boot);
     // Torso, shirt and short red jacket.
     final body=RRect.fromRectAndRadius(Rect.fromLTWH(27,48,48,38),const Radius.circular(13));
