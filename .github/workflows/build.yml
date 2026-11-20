@@ -51,10 +51,53 @@ jobs:
           Asset versions and download URLs are pinned in .github/workflows/build.yml.
           EOF
           ls -lh assets/models
+      - name: Install Android export requirements
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends openjdk-17-jdk unzip
+          export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          echo "JAVA_HOME=$JAVA_HOME"
+          java -version
+          # Find the Android SDK already bundled in the Godot CI image.
+          ADB_PATH="$(find / -type f -path '*/platform-tools/adb' 2>/dev/null | head -n 1)"
+          if [ -z "$ADB_PATH" ]; then
+            echo "Android SDK platform-tools/adb was not found in the build image."
+            exit 1
+          fi
+          ANDROID_HOME="$(dirname "$(dirname "$ADB_PATH")")"
+          export ANDROID_HOME
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          test -x "$ADB_PATH"
+          # Install the exact Godot 4.4.1 export templates, including android_source.zip.
+          mkdir -p /tmp/godot-templates "$HOME/.local/share/godot/export_templates/4.4.1.stable"
+          curl -fL --retry 3 https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz -o /tmp/godot-templates/templates.tpz
+          unzip -q /tmp/godot-templates/templates.tpz -d /tmp/godot-templates/unpacked
+          cp -a /tmp/godot-templates/unpacked/templates/. "$HOME/.local/share/godot/export_templates/4.4.1.stable/"
+          test -f "$HOME/.local/share/godot/export_templates/4.4.1.stable/android_source.zip"
+          # Create a standard CI debug keystore and expose it to Godot.
+          mkdir -p "$HOME/.android"
+          keytool -genkeypair -noprompt -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+          export GODOT_ANDROID_KEYSTORE_DEBUG_PATH="$HOME/.android/debug.keystore"
+          export GODOT_ANDROID_KEYSTORE_DEBUG_USER="androiddebugkey"
+          export GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD="android"
+          echo "Android export prerequisites installed."
       - name: Import Godot project
-        run: godot --headless --editor --path . --import
+        run: |
+          export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          ADB_PATH="$(find / -type f -path '*/platform-tools/adb' 2>/dev/null | head -n 1)"
+          export ANDROID_HOME="$(dirname "$(dirname "$ADB_PATH")")"
+          godot --headless --editor --path . --import
       - name: Export Android APK
         run: |
+          export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          ADB_PATH="$(find / -type f -path '*/platform-tools/adb' 2>/dev/null | head -n 1)"
+          export ANDROID_HOME="$(dirname "$(dirname "$ADB_PATH")")"
+          export GODOT_ANDROID_KEYSTORE_DEBUG_PATH="$HOME/.android/debug.keystore"
+          export GODOT_ANDROID_KEYSTORE_DEBUG_USER="androiddebugkey"
+          export GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD="android"
           mkdir -p build
           godot --headless --path . --export-debug "Android" build/HospitalSimulator.apk
       - uses: actions/upload-artifact@v4
