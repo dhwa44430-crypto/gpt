@@ -1,12 +1,13 @@
 name: madinati_city_builder
-description: Arabic city building game made with Flutter.
+description: Arabic 3D city building game made with Flutter and three_js.
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.1.0+2
 environment:
   sdk: ">=3.3.0 <4.0.0"
 dependencies:
   flutter:
     sdk: flutter
+  three_js: ^0.3.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

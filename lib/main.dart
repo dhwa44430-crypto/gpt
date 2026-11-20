@@ -1,7 +1,9 @@
+
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:three_js/three_js.dart' as three;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,17 +16,21 @@ class CityBuilderApp extends StatelessWidget {
   const CityBuilderApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-    debugShowCheckedModeBanner: false, title: 'مدينتي',
+    debugShowCheckedModeBanner: false,
+    title: 'مدينتي 3D',
     theme: ThemeData(brightness: Brightness.dark, scaffoldBackgroundColor: const Color(0xFF101B25), colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF36C7A0), brightness: Brightness.dark), useMaterial3: true),
     home: const CityScreen(),
   );
 }
 
 enum Tool { select, road, home, shop, factory, power, park, bulldoze }
-class Tile {
-  Tile({this.kind = Tool.select, this.level = 0});
+
+class CityTile {
+  CityTile({this.kind = Tool.select, this.level = 0});
   Tool kind;
   int level;
+  late three.Mesh ground;
+  three.Group? structure;
 }
 
 class CityScreen extends StatefulWidget {
@@ -34,34 +40,346 @@ class CityScreen extends StatefulWidget {
 }
 
 class _CityScreenState extends State<CityScreen> {
-  static const n = 18;
-  late final List<List<Tile>> map;
-  late final Timer timer;
-  Tool tool = Tool.home;
-  int money = 18000, population = 12, jobs = 8, happiness = 76, day = 1, growth = 0, roads = 28, buildings = 5;
-  String message = 'اختر البناء ثم اضغط على أرض المدينة';
-  bool help = true;
-  final prices = const {Tool.road:45, Tool.home:130, Tool.shop:210, Tool.factory:190, Tool.power:650, Tool.park:160, Tool.bulldoze:0, Tool.select:0};
+  static const int gridSize = 18;
+  late final List<List<CityTile>> city;
+  late final Timer simulationTimer;
+  late three.ThreeJS threeJs;
+  late three.MapControls cameraControls;
+  final three.Raycaster raycaster = three.Raycaster();
+  final three.Vector2 pointer = three.Vector2();
+  final List<three.Object3D> groundTiles = [];
+  final Map<int, dynamic> materials = {};
+  three.BoxGeometry? groundGeometry;
+
+  Tool selectedTool = Tool.home;
+  int money = 18000, population = 12, jobs = 8, happiness = 76, day = 1, roads = 27, buildings = 5, growth = 0;
+  String message = 'اختر نوع البناء ثم اضغط على قطعة أرض في المدينة';
+  bool ready = false, showHelp = true;
+
+  final Map<Tool, int> prices = const {
+    Tool.road: 45, Tool.home: 130, Tool.shop: 210, Tool.factory: 190,
+    Tool.power: 650, Tool.park: 160, Tool.bulldoze: 0, Tool.select: 0,
+  };
 
   @override
   void initState() {
     super.initState();
-    map = List.generate(n, (_) => List.generate(n, (_) => Tile()));
-    for (int c=1;c<17;c++) { map[9][c].kind=Tool.road; }
-    for (int r=3;r<15;r++) { if(r!=9) map[r][9].kind=Tool.road; }
-    map[8][8] = Tile(kind:Tool.power,level:1);
-    map[8][7] = Tile(kind:Tool.home,level:2);
-    map[8][10] = Tile(kind:Tool.shop,level:1);
-    map[10][8] = Tile(kind:Tool.home,level:1);
-    map[10][10] = Tile(kind:Tool.park,level:1);
-    timer = Timer.periodic(const Duration(seconds:3), (_) => simulate());
+    city = List.generate(gridSize, (_) => List.generate(gridSize, (_) => CityTile()));
+    threeJs = three.ThreeJS(
+      onSetupComplete: () { if (mounted) setState(() => ready = true); },
+      setup: setup3D,
+    );
+    simulationTimer = Timer.periodic(const Duration(seconds: 5), (_) => simulateCity());
   }
 
   @override
-  void dispose() { timer.cancel(); super.dispose(); }
+  void dispose() {
+    simulationTimer.cancel();
+    if (ready) cameraControls.dispose();
+    threeJs.dispose();
+    three.loading.clear();
+    super.dispose();
+  }
 
-  String nameOf(Tool t) {
-    switch(t) {
+  Future<void> setup3D() async {
+    threeJs.scene = three.Scene();
+    threeJs.scene.background = three.Color.fromHex32(0x9CC9D7);
+    threeJs.scene.fog = three.Fog(0x9CC9D7, 26, 65);
+    threeJs.camera = three.PerspectiveCamera(48, threeJs.width / threeJs.height, 0.1, 120);
+    threeJs.camera.position.setValues(21, 24, 25);
+    threeJs.camera.lookAt(0, 0, 0);
+
+    threeJs.scene.add(three.AmbientLight(0xffffff, 0.72));
+    final sunlight = three.DirectionalLight(0xfff2d8, 1.35)..position.setValues(-12, 25, 15);
+    threeJs.scene.add(sunlight);
+    final fill = three.DirectionalLight(0x9ecfff, 0.35)..position.setValues(12, 10, -15);
+    threeJs.scene.add(fill);
+
+    cameraControls = three.MapControls(threeJs.camera, threeJs.globalKey);
+    cameraControls.enableDamping = true;
+    cameraControls.dampingFactor = 0.07;
+    cameraControls.screenSpacePanning = false;
+    cameraControls.minDistance = 9;
+    cameraControls.maxDistance = 48;
+    cameraControls.maxPolarAngle = 1.48;
+    cameraControls.target.setValues(0, 0, 0);
+    cameraControls.update();
+
+    groundGeometry = three.BoxGeometry(0.98, 0.12, 0.98);
+    createCityGround();
+    createStartingCity();
+    threeJs.domElement.addEventListener(three.PeripheralType.pointerDown, onCityPointerDown);
+    threeJs.addAnimationEvent((dt) { cameraControls.update(); });
+  }
+
+  dynamic material(int color) => materials.putIfAbsent(
+    color,
+    () => three.MeshPhongMaterial.fromMap({'color': color, 'shininess': 22, 'flatShading': true}),
+  );
+
+  void addBox(three.Object3D parent, double width, double height, double depth, double x, double y, double z, int color) {
+    final mesh = three.Mesh(three.BoxGeometry(width, height, depth), material(color));
+    mesh.position.setValues(x, y, z);
+    parent.add(mesh);
+  }
+
+  void addCylinder(three.Object3D parent, double radiusTop, double radiusBottom, double height, double x, double y, double z, int color) {
+    final mesh = three.Mesh(three.CylinderGeometry(radiusTop, radiusBottom, height, 8), material(color));
+    mesh.position.setValues(x, y, z);
+    parent.add(mesh);
+  }
+
+  void addTree(three.Object3D parent, double x, double z, {double scale = 1}) {
+    addCylinder(parent, 0.055 * scale, 0.075 * scale, 0.48 * scale, x, 0.34 * scale, z, 0x795338);
+    final crown = three.Mesh(three.ConeGeometry(0.34 * scale, 0.82 * scale, 7), material(0x27824C));
+    crown.position.setValues(x, 0.91 * scale, z);
+    parent.add(crown);
+    final crownTop = three.Mesh(three.SphereGeometry(0.22 * scale, 8, 6), material(0x49A85F));
+    crownTop.position.setValues(x - 0.06 * scale, 1.18 * scale, z);
+    parent.add(crownTop);
+  }
+
+  void createCityGround() {
+    final groundBase = three.Mesh(three.BoxGeometry(gridSize + 1.0, 0.35, gridSize + 1.0), material(0x587B52));
+    groundBase.position.setValues(0, -0.24, 0);
+    threeJs.scene.add(groundBase);
+
+    for (int row = 0; row < gridSize; row++) {
+      for (int col = 0; col < gridSize; col++) {
+        final mesh = three.Mesh(groundGeometry!, material(tileColor(row, col)));
+        mesh.position.setValues(col - 8.5, 0, row - 8.5);
+        mesh.name = 'tile_' + row.toString() + '_' + col.toString();
+        city[row][col].ground = mesh;
+        threeJs.scene.add(mesh);
+        groundTiles.add(mesh);
+      }
+    }
+
+    for (int i = 0; i < 22; i++) {
+      final x = (i - 11) * 2.8;
+      final h = 1.8 + (i % 5) * 0.65;
+      final block = three.Mesh(three.BoxGeometry(1.8, h, 1.8), material(i.isEven ? 0x78939A : 0x6F8993));
+      block.position.setValues(x, h / 2 - 0.1, -13.2);
+      threeJs.scene.add(block);
+    }
+  }
+
+  int tileColor(int row, int col) => (row + col).isEven ? 0x82AD69 : 0x78A45F;
+
+  void updateTileAppearance(int row, int col) {
+    final tile = city[row][col];
+    tile.ground.material = material(tile.kind == Tool.road ? 0x414B53 : tileColor(row, col));
+    if (tile.kind == Tool.road) {
+      final marker = three.Group();
+      addBox(marker, 0.07, 0.025, 0.42, 0, 0.085, 0, 0xF4D77B);
+      marker.position.setValues(col - 8.5, 0, row - 8.5);
+      tile.structure = marker;
+      threeJs.scene.add(marker);
+    }
+  }
+
+  void setTile(int row, int col, Tool kind, int level, {bool updateCounters = true}) {
+    final tile = city[row][col];
+    if (tile.structure != null) {
+      threeJs.scene.remove(tile.structure!);
+      tile.structure = null;
+    }
+    tile.kind = kind;
+    tile.level = level;
+    updateTileAppearance(row, col);
+    if (kind != Tool.select && kind != Tool.road) {
+      final group = createBuilding(kind, level);
+      group.position.setValues(col - 8.5, 0.08, row - 8.5);
+      tile.structure = group;
+      threeJs.scene.add(group);
+    }
+    if (updateCounters) {
+      if (kind == Tool.road) {
+        roads++;
+      } else if (kind != Tool.select) {
+        buildings++;
+      }
+    }
+  }
+
+  three.Group createBuilding(Tool kind, int level) {
+    final group = three.Group();
+    final floors = math.max(1, level).toInt();
+    switch (kind) {
+      case Tool.home:
+        addBox(group, 0.68, 0.48 + floors * 0.28, 0.68, 0, 0.24 + floors * 0.14, 0, 0xD8B58C);
+        addBox(group, 0.76, 0.12, 0.76, 0, 0.52 + floors * 0.28, 0, 0xA94F43);
+        for (int floor = 0; floor < floors; floor++) {
+          final y = 0.16 + floor * 0.28;
+          for (final x in [-0.19, 0.19]) {
+            addBox(group, 0.105, 0.12, 0.025, x, y, 0.35, 0x7ED7E8);
+            addBox(group, 0.105, 0.12, 0.025, x, y, -0.35, 0x7ED7E8);
+          }
+        }
+        addBox(group, 0.16, 0.28, 0.035, 0, 0.15, 0.355, 0x654331);
+        break;
+      case Tool.shop:
+        addBox(group, 0.76, 0.7 + floors * 0.24, 0.72, 0, 0.35 + floors * 0.12, 0, 0x5A91BD);
+        addBox(group, 0.82, 0.13, 0.78, 0, 0.76 + floors * 0.24, 0, 0xDCE8EF);
+        addBox(group, 0.8, 0.2, 0.08, 0, 0.18, 0.39, 0xF2C45D);
+        for (final x in [-0.24, 0.0, 0.24]) {
+          addBox(group, 0.13, 0.25, 0.025, x, 0.43, 0.37, 0xA9E7F0);
+        }
+        break;
+      case Tool.factory:
+        addBox(group, 0.82, 0.56, 0.78, 0, 0.28, 0, 0xA77B53);
+        addBox(group, 0.86, 0.16, 0.82, 0, 0.64, 0, 0xC8A477);
+        addBox(group, 0.17, 0.85, 0.17, 0.22, 1.0, -0.18, 0x737E83);
+        addBox(group, 0.12, 0.12, 0.12, 0.22, 1.48, -0.18, 0xD1D5D4);
+        for (final x in [-0.24, 0.22]) {
+          addBox(group, 0.14, 0.13, 0.025, x, 0.3, 0.4, 0xF5D78C);
+        }
+        break;
+      case Tool.power:
+        addBox(group, 0.78, 0.68, 0.78, 0, 0.34, 0, 0x899BA5);
+        addBox(group, 0.25, 1.0, 0.25, -0.22, 0.86, -0.18, 0x606F79);
+        addBox(group, 0.2, 0.76, 0.2, 0.22, 0.74, 0.18, 0x74848D);
+        addBox(group, 0.18, 0.22, 0.035, 0, 0.33, 0.4, 0xFFD36B);
+        break;
+      case Tool.park:
+        final lawn = three.Mesh(three.BoxGeometry(0.86, 0.035, 0.86), material(0x69A85C));
+        lawn.position.setValues(0, 0.02, 0);
+        group.add(lawn);
+        addTree(group, -0.22, -0.2, scale: 0.8);
+        addTree(group, 0.2, -0.18, scale: 0.72);
+        addTree(group, 0, 0.2, scale: 0.75);
+        addBox(group, 0.12, 0.06, 0.42, 0, 0.08, 0, 0xD5C18C);
+        break;
+      case Tool.road:
+      case Tool.select:
+      case Tool.bulldoze:
+        break;
+    }
+    return group;
+  }
+
+  bool get hasPower => city.expand((row) => row).any((tile) => tile.kind == Tool.power);
+
+  bool hasAdjacentRoad(int row, int col) {
+    const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+    for (final direction in directions) {
+      final r = row + direction[0], c = col + direction[1];
+      if (r >= 0 && r < gridSize && c >= 0 && c < gridSize && city[r][c].kind == Tool.road) return true;
+    }
+    return false;
+  }
+
+  void onCityPointerDown(three.WebPointerEvent event) {
+    if (!ready || !mounted) return;
+    pointer.x = (event.clientX / threeJs.width) * 2 - 1;
+    pointer.y = -(event.clientY / threeJs.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, threeJs.camera);
+    final hits = raycaster.intersectObjects(groundTiles, false);
+    if (hits.isEmpty) return;
+    final name = hits.first.object!.name;
+    final parts = name.split('_');
+    if (parts.length != 3) return;
+    final row = int.tryParse(parts[1]), col = int.tryParse(parts[2]);
+    if (row != null && col != null) handleTileTap(row, col);
+  }
+
+  void handleTileTap(int row, int col) {
+    if (row < 0 || row >= gridSize || col < 0 || col >= gridSize) return;
+    final tile = city[row][col];
+    if (selectedTool == Tool.select) {
+      setState(() {
+        message = tile.kind == Tool.select ? 'أرض فارغة' : toolName(tile.kind) + ' • المستوى ' + tile.level.toString();
+      });
+      return;
+    }
+    if (selectedTool == Tool.bulldoze) {
+      if (tile.kind == Tool.select) {
+        setState(() => message = 'لا يوجد بناء لإزالته هنا');
+        return;
+      }
+      setState(() {
+        if (tile.kind == Tool.road) {
+          roads = math.max(0, roads - 1).toInt();
+        } else {
+          buildings = math.max(0, buildings - 1).toInt();
+        }
+        if (tile.kind == Tool.home) population = math.max(0, population - 4).toInt();
+        if (tile.kind == Tool.shop || tile.kind == Tool.factory) jobs = math.max(0, jobs - 3).toInt();
+        setTile(row, col, Tool.select, 0, updateCounters: false);
+        message = 'تمت إزالة البناء';
+      });
+      return;
+    }
+    if (tile.kind != Tool.select) {
+      setState(() => message = 'هذه القطعة مشغولة، أزل البناء أولاً');
+      return;
+    }
+    if (selectedTool != Tool.road && !hasAdjacentRoad(row, col)) {
+      setState(() => message = 'يجب بناء المبنى بجانب طريق');
+      return;
+    }
+    if (selectedTool == Tool.power && hasPower) {
+      setState(() => message = 'لديك محطة كهرباء بالفعل');
+      return;
+    }
+    final cost = prices[selectedTool]!;
+    if (money < cost) {
+      setState(() => message = 'الأموال غير كافية • تحتاج إلى ' + cost.toString());
+      return;
+    }
+    setState(() {
+      money -= cost;
+      setTile(row, col, selectedTool, selectedTool == Tool.road ? 0 : 1);
+      message = 'تم إنشاء ' + toolName(selectedTool) + ' بنجاح';
+      showHelp = false;
+    });
+  }
+
+  void simulateCity() {
+    if (!mounted || !ready) return;
+    setState(() {
+      day++;
+      var homes = 0, businesses = 0, parks = 0;
+      for (int row = 0; row < gridSize; row++) {
+        for (int col = 0; col < gridSize; col++) {
+          final tile = city[row][col];
+          if (tile.kind == Tool.home) {
+            homes++;
+            if (hasPower && hasAdjacentRoad(row, col) && tile.level < 4 && growth % 3 == 0) {
+              tile.level++;
+              population += 3;
+              refreshBuilding(row, col);
+            }
+          } else if (tile.kind == Tool.shop || tile.kind == Tool.factory) {
+            businesses++;
+            if (hasPower && hasAdjacentRoad(row, col) && tile.level < 4 && growth % 4 == 0) {
+              tile.level++;
+              refreshBuilding(row, col);
+            }
+          } else if (tile.kind == Tool.park) {
+            parks++;
+          }
+        }
+      }
+      growth++;
+      jobs = businesses * 5 + 8;
+      money += homes * 18 + businesses * 38 + parks * 5 - roads * 2 - (hasPower ? 35 : 0) - businesses * 8;
+      happiness = (70 + parks * 3 + (hasPower ? 8 : -25) - math.max(0, population ~/ 70)).clamp(15, 99).toInt();
+      if (!hasPower && homes > 0) message = 'تنبيه: المدينة تحتاج إلى محطة كهرباء';
+    });
+  }
+
+  void refreshBuilding(int row, int col) {
+    final tile = city[row][col];
+    if (tile.structure != null) threeJs.scene.remove(tile.structure!);
+    final group = createBuilding(tile.kind, tile.level);
+    group.position.setValues(col - 8.5, 0.08, row - 8.5);
+    tile.structure = group;
+    threeJs.scene.add(group);
+  }
+
+  String toolName(Tool tool) {
+    switch (tool) {
       case Tool.road: return 'طريق';
       case Tool.home: return 'منطقة سكنية';
       case Tool.shop: return 'منطقة تجارية';
@@ -72,77 +390,25 @@ class _CityScreenState extends State<CityScreen> {
       case Tool.select: return 'تحديد';
     }
   }
-  bool get powered => map.expand((r)=>r).any((t)=>t.kind==Tool.power);
-  bool hasRoad(int r,int c) {
-    for(final d in const [[0,1],[0,-1],[1,0],[-1,0]]) {
-      final y=r+d[0], x=c+d[1];
-      if(y>=0&&y<n&&x>=0&&x<n&&map[y][x].kind==Tool.road) return true;
-    }
-    return false;
-  }
 
-  void place(int r,int c) {
-    if(r<0||r>=n||c<0||c>=n) return;
-    final t=map[r][c];
-    if(tool==Tool.select) { setState(()=>message=t.kind==Tool.select?'أرض فارغة':nameOf(t.kind)+' • المستوى '+t.level.toString()); return; }
-    if(tool==Tool.bulldoze) {
-      if(t.kind==Tool.select) { setState(()=>message='لا يوجد شيء لإزالته هنا'); return; }
-      setState(() {
-        if(t.kind==Tool.road) roads--; else buildings--;
-        if(t.kind==Tool.home) population=math.max(0,population-4).toInt();
-        if(t.kind==Tool.shop||t.kind==Tool.factory) jobs=math.max(0,jobs-3).toInt();
-        t.kind=Tool.select; t.level=0; message='تمت إزالة البناء';
-      });
-      return;
-    }
-    if(t.kind!=Tool.select) { setState(()=>message='هذه القطعة مشغولة، أزل البناء أولاً'); return; }
-    if(tool!=Tool.road&&!hasRoad(r,c)) { setState(()=>message='يجب أن يكون المبنى بجانب طريق'); return; }
-    if(tool==Tool.power&&powered) { setState(()=>message='لديك محطة كهرباء بالفعل'); return; }
-    final cost=prices[tool]!;
-    if(money<cost) { setState(()=>message='الأموال غير كافية! تحتاج إلى \$'+cost.toString()); return; }
-    setState(() {
-      money-=cost; t.kind=tool; t.level=tool==Tool.road?0:1;
-      if(tool==Tool.road) roads++; else buildings++;
-      message='تم إنشاء '+nameOf(tool)+' بنجاح'; help=false;
-    });
-  }
-
-  void simulate() {
-    if(!mounted) return;
-    setState(() {
-      day++;
-      int homes=0,business=0,parks=0;
-      for(int r=0;r<n;r++) for(int c=0;c<n;c++) {
-        final t=map[r][c];
-        if(t.kind==Tool.home) {
-          homes++;
-          if(powered&&hasRoad(r,c)&&t.level<4&&growth%3==0) { t.level++; population+=3; }
-        } else if(t.kind==Tool.shop||t.kind==Tool.factory) {
-          business++;
-          if(powered&&hasRoad(r,c)&&t.level<4&&growth%4==0) t.level++;
-        } else if(t.kind==Tool.park) parks++;
-      }
-      growth++;
-      jobs=business*5+8;
-      money+=homes*18+business*38+parks*5-roads*2-(powered?35:0)-business*8;
-      happiness=(70+parks*3+(powered?8:-25)-math.max(0,population~/70)).clamp(15,99).toInt();
-      if(!powered&&homes>0) message='تنبيه: مدينتك تحتاج إلى محطة كهرباء';
-    });
-  }
-
-  Color toolColor(Tool t) {
-    switch(t) {
-      case Tool.road:return const Color(0xFFB9C4CC);
-      case Tool.home:return const Color(0xFF54C6A4);
-      case Tool.shop:return const Color(0xFF55A7F2);
-      case Tool.factory:return const Color(0xFFE6A75B);
-      case Tool.power:return const Color(0xFFFFD166);
-      case Tool.park:return const Color(0xFF7ED36D);
-      case Tool.bulldoze:return const Color(0xFFFF7272);
-      case Tool.select:return const Color(0xFFE9F0F5);
+  Color toolColor(Tool tool) {
+    switch (tool) {
+      case Tool.road: return const Color(0xFFB9C4CC);
+      case Tool.home: return const Color(0xFF54C6A4);
+      case Tool.shop: return const Color(0xFF55A7F2);
+      case Tool.factory: return const Color(0xFFE6A75B);
+      case Tool.power: return const Color(0xFFFFD166);
+      case Tool.park: return const Color(0xFF7ED36D);
+      case Tool.bulldoze: return const Color(0xFFFF7272);
+      case Tool.select: return const Color(0xFFE9F0F5);
     }
   }
-  String price(Tool t)=>t==Tool.bulldoze?'مجاني':(t==Tool.select?'اختر':'\$'+prices[t].toString());
+
+  String priceLabel(Tool tool) {
+    if (tool == Tool.bulldoze) return 'مجاني';
+    if (tool == Tool.select) return 'اختر';
+    return '\$' + prices[tool].toString();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -151,27 +417,18 @@ class _CityScreenState extends State<CityScreen> {
         child: Row(
           children: [
             SizedBox(
-              width: 205,
+              width: 190,
               child: Container(
-                decoration: const BoxDecoration(
-                  color: Color(0xFF172633),
-                  border: Border(right: BorderSide(color: Color(0xFF2D4655))),
-                ),
+                decoration: const BoxDecoration(color: Color(0xFF172633), border: Border(right: BorderSide(color: Color(0xFF2D4655)))),
                 child: Column(
                   children: [
                     const SizedBox(height: 8),
-                    const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.location_city, color: Color(0xFF54D6B0), size: 27),
-                        SizedBox(width: 7),
-                        Text('مدينتي', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-                      ],
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8),
-                      child: Text('لوحة البناء', style: TextStyle(color: Colors.white54, fontSize: 12)),
-                    ),
+                    const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      Icon(Icons.location_city, color: Color(0xFF54D6B0), size: 26),
+                      SizedBox(width: 6),
+                      Text('مدينتي 3D', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                    ]),
+                    const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('لوحة البناء', style: TextStyle(color: Colors.white54, fontSize: 12))),
                     Expanded(
                       child: ListView(
                         padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -187,14 +444,7 @@ class _CityScreenState extends State<CityScreen> {
                         ],
                       ),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.all(7),
-                      child: TextButton.icon(
-                        onPressed: resetCity,
-                        icon: const Icon(Icons.restart_alt, size: 18),
-                        label: const Text('مدينة جديدة'),
-                      ),
-                    ),
+                    Padding(padding: const EdgeInsets.all(7), child: TextButton.icon(onPressed: resetCity, icon: const Icon(Icons.restart_alt, size: 18), label: const Text('مدينة جديدة'))),
                   ],
                 ),
               ),
@@ -204,45 +454,27 @@ class _CityScreenState extends State<CityScreen> {
                 children: [
                   topBar(),
                   Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, box) {
-                        return Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTapDown: (d) {
-                                final p = screenToTile(d.localPosition, box.biggest);
-                                place(p.$1, p.$2);
-                              },
-                              child: CustomPaint(
-                                painter: CityPainter(map: map),
-                                child: const SizedBox.expand(),
-                              ),
-                            ),
-                            if (help)
-                              Positioned(
-                                left: 10,
-                                right: 10,
-                                bottom: 8,
-                                child: IgnorePointer(
-                                  child: Container(
-                                    padding: const EdgeInsets.all(9),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xE8172633),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: const Text(
-                                      'اختر نوع البناء من اليسار ثم اضغط على قطعة أرض بجانب الطريق.',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(fontSize: 12),
-                                    ),
-                                  ),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        threeJs.build(),
+                        if (!ready) const Center(child: CircularProgressIndicator()),
+                        if (showHelp && ready)
+                          Positioned(
+                            left: 12, right: 12, bottom: 10,
+                            child: IgnorePointer(
+                              child: Container(
+                                padding: const EdgeInsets.all(9),
+                                decoration: BoxDecoration(color: const Color(0xE8172633), borderRadius: BorderRadius.circular(12)),
+                                child: const Text(
+                                  'اسحب بإصبعك لتدوير المدينة • استخدم إصبعين للتقريب والإبعاد • اختر البناء ثم المس الأرض',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(fontSize: 11),
                                 ),
                               ),
-                          ],
-                        );
-                      },
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                   bottomBar(),
@@ -255,106 +487,107 @@ class _CityScreenState extends State<CityScreen> {
     );
   }
 
-  Widget toolButton(Tool t,IconData icon,String label) {
-    final selected=tool==t, color=toolColor(t);
-    return Padding(padding:const EdgeInsets.only(bottom:5),child:Material(color:selected?color.withOpacity(.2):const Color(0xFF203441),borderRadius:BorderRadius.circular(10),child:InkWell(borderRadius:BorderRadius.circular(10),onTap:()=>setState(() { tool=t; message='اختر موقع '+nameOf(t)+' على الخريطة'; help=false; }),child:Container(height:42,padding:const EdgeInsets.symmetric(horizontal:9),decoration:BoxDecoration(borderRadius:BorderRadius.circular(10),border:Border.all(color:selected?color:Colors.white10,width:selected?1.5:1)),child:Row(children:[Icon(icon,color:color,size:20),const SizedBox(width:8),Expanded(child:Text(label,style:const TextStyle(fontSize:13,fontWeight:FontWeight.bold))),Text(price(t),style:TextStyle(fontSize:10,color:selected?color:Colors.white54))])))));
+  Widget toolButton(Tool tool, IconData icon, String label) {
+    final selected = selectedTool == tool;
+    final color = toolColor(tool);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 5),
+      child: Material(
+        color: selected ? color.withOpacity(0.2) : const Color(0xFF203441),
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => setState(() {
+            selectedTool = tool;
+            message = 'اختر موقع ' + toolName(tool) + ' على المدينة';
+            showHelp = false;
+          }),
+          child: Container(
+            height: 41,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: selected ? color : Colors.white10, width: selected ? 1.5 : 1)),
+            child: Row(
+              children: [
+                Icon(icon, color: color, size: 19),
+                const SizedBox(width: 7),
+                Expanded(child: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
+                Text(priceLabel(tool), style: TextStyle(fontSize: 10, color: selected ? color : Colors.white54)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
-  (int,int) screenToTile(Offset p,Size s) {
-    const hw=CityPainter.tileW/2,hh=CityPainter.tileH/2;
-    final scale=math.min((s.width-20)/(n*CityPainter.tileW),(s.height-24)/(n*CityPainter.tileH)).clamp(.1,1.0).toDouble();
-    final offsetY=(s.height-n*CityPainter.tileH*scale)/2;
-    final x=(p.dx-s.width/2)/scale,y=(p.dy-offsetY)/scale;
-    final col=((x/hw+y/hh)/2).round(),row=((y/hh-x/hw)/2).round();
-    return (row,col);
-  }
+  Widget stat(IconData icon, String label, String value, Color color) => Padding(
+    padding: const EdgeInsets.only(right: 12),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 17, color: color),
+      const SizedBox(width: 4),
+      Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: const TextStyle(fontSize: 9, color: Colors.white54)),
+        Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: color)),
+      ]),
+    ]),
+  );
 
-  Widget stat(IconData icon,String label,String value,Color color)=>Padding(padding:const EdgeInsets.only(right:14),child:Row(mainAxisSize:MainAxisSize.min,children:[Icon(icon,size:18,color:color),const SizedBox(width:5),Column(mainAxisAlignment:MainAxisAlignment.center,crossAxisAlignment:CrossAxisAlignment.start,children:[Text(label,style:const TextStyle(fontSize:10,color:Colors.white54)),Text(value,style:TextStyle(fontSize:13,fontWeight:FontWeight.w900,color:color))])] ));
-  Widget topBar()=>Container(height:56,padding:const EdgeInsets.symmetric(horizontal:12),color:const Color(0xFF1C303D),child:Row(children:[
-    stat(Icons.attach_money,'الميزانية','\$'+money.toString(),const Color(0xFF75D6A1)),
-    stat(Icons.people_alt,'السكان',population.toString(),const Color(0xFF73C9F2)),
-    stat(Icons.work,'الوظائف',jobs.toString(),const Color(0xFFF0BB71)),
-    stat(Icons.mood,'السعادة',happiness.toString()+'%',const Color(0xFFFFD166)),
-    const Spacer(),Text('اليوم '+day.toString(),style:const TextStyle(fontWeight:FontWeight.bold)),
-  ]));
-  Widget bottomBar()=>Container(height:32,padding:const EdgeInsets.symmetric(horizontal:10),color:const Color(0xFF172633),child:Row(children:[
-    const Icon(Icons.info_outline,size:15,color:Color(0xFF54D6B0)),const SizedBox(width:6),
-    Expanded(child:Text(message,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:11,color:Colors.white70))),
-    Text('طرق '+roads.toString()+' • مبانٍ '+buildings.toString(),style:const TextStyle(fontSize:10,color:Colors.white38)),
-  ]));
+  Widget topBar() => Container(
+    height: 54,
+    padding: const EdgeInsets.symmetric(horizontal: 10),
+    color: const Color(0xFF1C303D),
+    child: Row(children: [
+      stat(Icons.attach_money, 'الميزانية', money.toString(), const Color(0xFF75D6A1)),
+      stat(Icons.people_alt, 'السكان', population.toString(), const Color(0xFF73C9F2)),
+      stat(Icons.work, 'الوظائف', jobs.toString(), const Color(0xFFF0BB71)),
+      stat(Icons.mood, 'السعادة', happiness.toString() + '%', const Color(0xFFFFD166)),
+      const Spacer(),
+      Text('اليوم ' + day.toString(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+    ]),
+  );
+
+  Widget bottomBar() => Container(
+    height: 31,
+    padding: const EdgeInsets.symmetric(horizontal: 9),
+    color: const Color(0xFF172633),
+    child: Row(children: [
+      const Icon(Icons.info_outline, size: 15, color: Color(0xFF54D6B0)),
+      const SizedBox(width: 6),
+      Expanded(child: Text(message, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Colors.white70))),
+      Text('طرق ' + roads.toString() + ' • مبانٍ ' + buildings.toString(), style: const TextStyle(fontSize: 10, color: Colors.white38)),
+    ]),
+  );
 
   void resetCity() {
-    setState((){
-      for(final row in map) for(final t in row){t.kind=Tool.select;t.level=0;}
-      roads=0;buildings=0;money=18000;population=0;jobs=0;happiness=70;day=1;growth=0;
-      for(int c=1;c<17;c++){map[9][c].kind=Tool.road;roads++;}
-      for(int r=3;r<15;r++){if(r!=9){map[r][9].kind=Tool.road;roads++;}}
-      tool=Tool.power;message='مدينة جديدة: ابنِ محطة كهرباء ومنازل ومتاجر';help=true;
+    if (!ready) return;
+    setState(() {
+      for (int row = 0; row < gridSize; row++) {
+        for (int col = 0; col < gridSize; col++) {
+          final tile = city[row][col];
+          if (tile.structure != null) {
+            threeJs.scene.remove(tile.structure!);
+            tile.structure = null;
+          }
+          tile.kind = Tool.select;
+          tile.level = 0;
+          tile.ground.material = material(tileColor(row, col));
+        }
+      }
+      money = 18000;
+      population = 0;
+      jobs = 0;
+      happiness = 70;
+      day = 1;
+      growth = 0;
+      roads = 0;
+      buildings = 0;
+      for (int col = 1; col < 17; col++) setTile(9, col, Tool.road, 0);
+      for (int row = 3; row < 15; row++) {
+        if (row != 9) setTile(row, 9, Tool.road, 0);
+      }
+      selectedTool = Tool.power;
+      message = 'مدينة جديدة: ابنِ محطة كهرباء ومنازل ومتاجر';
+      showHelp = true;
     });
   }
-}
-
-class CityPainter extends CustomPainter {
-  CityPainter({required this.map});
-  final List<List<Tile>> map;
-  static const double tileW=64,tileH=32;
-  @override
-  void paint(Canvas c,Size s) {
-    c.drawRect(Offset.zero&s,Paint()..shader=const LinearGradient(begin:Alignment.topCenter,end:Alignment.bottomCenter,colors:[Color(0xFF7CB7C2),Color(0xFF527E75),Color(0xFF294B43)]).createShader(Offset.zero&s));
-    for(int i=0;i<13;i++){final x=i*s.width/12-20,h=35.0+(i*29%70);c.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(x,80-h,32+(i%3)*12,h),const Radius.circular(3)),Paint()..color=const Color(0x2440525A));}
-    final scale=math.min((s.width-20)/(18*tileW),(s.height-24)/(18*tileH)).clamp(.1,1.0).toDouble();
-    final offsetY=(s.height-18*tileH*scale)/2;
-    c.save();c.translate(s.width/2,offsetY);c.scale(scale);
-    for(int sum=0;sum<=34;sum++)for(int r=0;r<18;r++){final col=sum-r;if(col>=0&&col<18)drawTile(c,r,col,map[r][col]);}
-    c.restore();
-  }
-  Offset center(int r,int col)=>Offset((col-r)*tileW/2,(col+r)*tileH/2);
-  void drawTile(Canvas c,int r,int col,Tile t) {
-    final p=center(r,col);
-    final diamond=Path()..moveTo(p.dx,p.dy-tileH/2)..lineTo(p.dx+tileW/2,p.dy)..lineTo(p.dx,p.dy+tileH/2)..lineTo(p.dx-tileW/2,p.dy)..close();
-    c.drawPath(diamond,Paint()..color=(r+col).isEven?const Color(0xFF719B68):const Color(0xFF789F6D));
-    c.drawPath(diamond,Paint()..color=const Color(0x1CFFFFFF)..style=PaintingStyle.stroke..strokeWidth=.7);
-    switch(t.kind){
-      case Tool.road:road(c,p);break;
-      case Tool.home:building(c,p,t.level,const Color(0xFF4A9D83),const Color(0xFFB9E7D7),0);break;
-      case Tool.shop:building(c,p,t.level,const Color(0xFF367EB4),const Color(0xFFB8E2F8),1);break;
-      case Tool.factory:building(c,p,t.level,const Color(0xFF9B7650),const Color(0xFFE8C58E),2);break;
-      case Tool.power:powerPlant(c,p);break;
-      case Tool.park:park(c,p);break;
-      case Tool.select:break;
-      case Tool.bulldoze:break;
-    }
-  }
-  void road(Canvas c,Offset p){
-    final path=Path()..moveTo(p.dx,p.dy-13)..lineTo(p.dx+27,p.dy)..lineTo(p.dx,p.dy+13)..lineTo(p.dx-27,p.dy)..close();
-    c.drawPath(path,Paint()..color=const Color(0xFF4D5960));
-    c.drawPath(path,Paint()..color=const Color(0xFF899397)..style=PaintingStyle.stroke..strokeWidth=1);
-    c.drawLine(Offset(p.dx-20,p.dy),Offset(p.dx+20,p.dy),Paint()..color=const Color(0xFFFFD66B)..strokeWidth=1.5);
-  }
-  void building(Canvas c,Offset p,int level,Color front,Color roof,int style){
-    final floors=math.max(1,level).toDouble(),height=22.0+math.max(1,level)*10.0,w=style==2?39.0:31.0,d=style==2?23.0:21.0;
-    final top=p.dy-height,left=p.dx-w/2,right=p.dx+w/2,side=Color.lerp(front,Colors.black,.25)!;
-    final roofPath=Path()..moveTo(p.dx,top-9)..lineTo(right+d/2,top+1)..lineTo(p.dx,top+11)..lineTo(left-d/2,top+1)..close();
-    final frontPath=Path()..moveTo(left-d/2,top+1)..lineTo(p.dx,top+11)..lineTo(p.dx,p.dy-3)..lineTo(left-d/2,p.dy-13)..close();
-    final sidePath=Path()..moveTo(p.dx,top+11)..lineTo(right+d/2,top+1)..lineTo(right+d/2,p.dy-13)..lineTo(p.dx,p.dy-3)..close();
-    c.drawPath(frontPath,Paint()..color=front);c.drawPath(sidePath,Paint()..color=side);c.drawPath(roofPath,Paint()..color=roof);
-    if(style==2)c.drawRect(Rect.fromLTWH(p.dx+8,top-16,7,17),Paint()..color=const Color(0xFF727D80));
-    final win=Paint()..color=const Color(0xFFFFE7A4);
-    for(int f=0;f<floors;f++){final y=top+15+f*10.0;c.drawRect(Rect.fromLTWH(left-8,y,5,5),win);c.drawRect(Rect.fromLTWH(p.dx-3,y+3,5,5),win);c.drawRect(Rect.fromLTWH(p.dx+7,y-2,5,5),win);}
-    if(style==0)c.drawCircle(Offset(p.dx,top-12),5,Paint()..color=const Color(0xFF66B96C));
-  }
-  void powerPlant(Canvas c,Offset p){
-    final base=Path()..moveTo(p.dx-24,p.dy-13)..lineTo(p.dx,p.dy-1)..lineTo(p.dx+24,p.dy-13)..lineTo(p.dx,p.dy-25)..close();
-    c.drawPath(base,Paint()..color=const Color(0xFFB88C55));
-    c.drawRect(Rect.fromLTWH(p.dx-14,p.dy-54,28,35),Paint()..color=const Color(0xFF8A9BA2));
-    c.drawRect(Rect.fromLTWH(p.dx-10,p.dy-60,8,10),Paint()..color=const Color(0xFF65747B));
-    c.drawRect(Rect.fromLTWH(p.dx+3,p.dy-63,8,13),Paint()..color=const Color(0xFF65747B));
-    c.drawRect(Rect.fromLTWH(p.dx-4,p.dy-43,8,11),Paint()..color=const Color(0xFFFFD166));
-  }
-  void park(Canvas c,Offset p){
-    c.drawPath(Path()..moveTo(p.dx,p.dy-8)..lineTo(p.dx+24,p.dy)..lineTo(p.dx,p.dy+9)..lineTo(p.dx-24,p.dy)..close(),Paint()..color=const Color(0xFFB7A66D));
-    for(int i=0;i<3;i++){final x=p.dx+(i-1)*13.0;c.drawRect(Rect.fromLTWH(x-2,p.dy-24,4,19),Paint()..color=const Color(0xFF765A3D));c.drawCircle(Offset(x,p.dy-28-(i%2)*4),10,Paint()..color=i.isEven?const Color(0xFF2E8A58):const Color(0xFF45A96B));c.drawCircle(Offset(x-3,p.dy-31),4,Paint()..color=const Color(0xFF78C77B));}
-  }
-  @override
-  bool shouldRepaint(covariant CityPainter oldDelegate)=>true;
 }

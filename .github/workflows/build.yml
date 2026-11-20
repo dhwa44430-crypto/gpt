@@ -1,4 +1,4 @@
-name: Build City Builder Android APK
+name: Build 3D City Builder Android APK
 on:
   push:
     branches: [ "main" ]
