@@ -7,6 +7,7 @@ var beds := 6
 var nurses := 2
 var day := 1
 var patient_nodes: Array[Node3D] = []
+var staff_nodes: Array[Node3D] = []
 var hud: CanvasLayer
 var status_label: Label
 var money_label: Label
@@ -21,6 +22,7 @@ func _ready() -> void:
 	_build_camera()
 	_build_hud()
 	_spawn_patients()
+	_spawn_staff()
 	_update_hud()
 
 func _mat(color: Color, roughness := 0.85) -> StandardMaterial3D:
@@ -65,6 +67,30 @@ func _add_model(file_name: String, model_position: Vector3, model_scale := Vecto
 	instance.rotation.y = yaw
 	world_root.add_child(instance)
 	return instance
+
+func _add_character(file_name: String, character_position: Vector3, character_scale := 1.0, animation_name := "idle") -> Node3D:
+	var character := _add_model(file_name, character_position, Vector3.ONE * character_scale)
+	if character == null:
+		return null
+	var players := character.find_children("*", "AnimationPlayer", true, false)
+	if players.size() > 0:
+		var animation_player := players[0] as AnimationPlayer
+		for animation in animation_player.get_animation_list():
+			if String(animation).to_lower().contains(animation_name.to_lower()):
+				animation_player.play(animation)
+				break
+	return character
+
+func _spawn_staff() -> void:
+	for i in range(nurses):
+		var nurse := _add_character("nurse.glb", Vector3(-4.0 + float(i) * 1.3, 0.0, -1.0), 1.0, "idle")
+		if nurse != null:
+			nurse.name = "Nurse_%d" % i
+			staff_nodes.append(nurse)
+	var doctor := _add_character("doctor.glb", Vector3(5.0, 0.0, -0.5), 1.0, "idle")
+	if doctor != null:
+		doctor.name = "Doctor"
+		staff_nodes.append(doctor)
 
 func _build_world() -> void:
 	world_root = Node3D.new()
@@ -121,14 +147,7 @@ func _build_camera() -> void:
 	camera.current = true
 
 func _spawn_patients() -> void:
-	for i in range(patients):
-		var p := Node3D.new()
-		p.name = "Patient_%d" % i
-		var body := _cylinder(p, "Body", Vector3(0, 0.72, 0), 0.34, 0.9, [Color("d9a16f"), Color("8c9fc5"), Color("b9a0cf")][i % 3])
-		var head := _cylinder(p, "Head", Vector3(0, 1.32, 0), 0.23, 0.42, Color("e9bb91"))
-		p.position = Vector3(-9 + float(i) * 1.7, 0, 1.8)
-		world_root.add_child(p)
-		patient_nodes.append(p)
+	_spawn_new_patient_nodes(patients)
 
 func _build_hud() -> void:
 	hud = CanvasLayer.new()
@@ -239,6 +258,10 @@ func _hire_nurse() -> void:
 		return
 	money -= 800
 	nurses += 1
+	var nurse := _add_character("nurse.glb", Vector3(-4.0 + float(nurses - 1) * 1.3, 0.0, -1.0), 1.0, "idle")
+	if nurse != null:
+		nurse.name = "Nurse_%d" % nurses
+		staff_nodes.append(nurse)
 	status_label.text = "تم توظيف ممرض جديد. كفاءة المستشفى ارتفعت."
 	_update_hud()
 
@@ -254,12 +277,14 @@ func _next_day() -> void:
 
 func _spawn_new_patient_nodes(amount: int) -> void:
 	for i in range(amount):
-		var p := Node3D.new()
-		_cylinder(p, "Body", Vector3(0, 0.72, 0), 0.34, 0.9, Color("d9a16f"))
-		_cylinder(p, "Head", Vector3(0, 1.32, 0), 0.23, 0.42, Color("e9bb91"))
-		p.position = Vector3(-8 + float((patient_nodes.size() + i) % 5) * 1.5, 0, 1.8)
-		world_root.add_child(p)
-		patient_nodes.append(p)
+		var patient_index := patient_nodes.size()
+		var model_file := "patient_male.glb" if patient_index % 2 == 0 else "patient_female.glb"
+		var x_position := -8.0 + float(patient_index % 5) * 1.7
+		var z_position := 2.2 + float(patient_index / 5) * 1.5
+		var patient := _add_character(model_file, Vector3(x_position, 0.0, z_position), 1.0, "idle")
+		if patient != null:
+			patient.name = "Patient_%d" % patient_index
+			patient_nodes.append(patient)
 
 var drag_start := Vector2.ZERO
 var dragging := false
