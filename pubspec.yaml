@@ -1,13 +1,13 @@
-name: madinati_city_builder
-description: Arabic 3D city building game made with Flutter and three_js.
+name: layth_adventure
+description: Original cartoon platform adventure game built with Flutter and Flame.
 publish_to: 'none'
-version: 1.1.0+2
+version: 1.0.0+1
 environment:
   sdk: ">=3.3.0 <4.0.0"
 dependencies:
   flutter:
     sdk: flutter
-  three_js: ^0.3.0
+  flame: ^1.32.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -15,10 +15,4 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/models/residencial/
-    - assets/models/comercial/
-    - assets/models/industrial/
-    - assets/models/energia/
-    - assets/models/parques/
-    - assets/models/ruas/
-
+    - assets/images/

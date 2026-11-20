@@ -1,4 +1,4 @@
-name: Build 3D City Builder Android APK
+name: Build Adventure Game Android APK
 on:
   push:
     branches: [ "main" ]
@@ -8,7 +8,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -16,28 +16,23 @@ jobs:
           channel: stable
           cache: true
       - name: Generate Android project files
-        run: flutter create --platforms=android --project-name madinati_city_builder .
-      - name: Download CC0 city 3D models
+        run: flutter create --platforms=android --project-name layth_adventure .
+      - name: Download original CC0 platformer art pack
         run: |
-          curl -L --fail --retry 3 https://github.com/kayquer/kit-cidade-lowpoly/archive/refs/heads/main.zip -o /tmp/city-kit.zip
-          unzip -q /tmp/city-kit.zip -d /tmp/city-kit
-          mkdir -p assets/models/{residencial,comercial,industrial,energia,parques,ruas}
-          cp /tmp/city-kit/kit-cidade-lowpoly-main/models/residencial/casa_simples.glb assets/models/residencial/
-          cp /tmp/city-kit/kit-cidade-lowpoly-main/models/comercial/loja_esquina.glb assets/models/comercial/
-          cp /tmp/city-kit/kit-cidade-lowpoly-main/models/industrial/fabrica.glb assets/models/industrial/
-          cp /tmp/city-kit/kit-cidade-lowpoly-main/models/energia/termeletrica.glb assets/models/energia/
-          cp /tmp/city-kit/kit-cidade-lowpoly-main/models/parques/parque.glb assets/models/parques/
-          cp /tmp/city-kit/kit-cidade-lowpoly-main/models/ruas/asfalto_reta.glb assets/models/ruas/
-          cp /tmp/city-kit/kit-cidade-lowpoly-main/LICENSE assets/models/LICENSE
-      - name: Install required Android CMake version
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "cmake;3.31.4"
-      - run: flutter pub get
-      - run: flutter analyze --no-fatal-infos
-      - run: flutter test
-      - run: flutter build apk --release
+          mkdir -p third_party/kenney
+          curl -L --fail --retry 3 'https://kenney.nl/media/pages/assets/new-platformer-pack/1896103897-1764756702/kenney_new-platformer-pack-1.1.zip' -o /tmp/kenney-platformer.zip
+          unzip -q /tmp/kenney-platformer.zip -d third_party/kenney
+          python3 -m pip install --quiet pillow
+          python3 tool/extract_assets.py
+      - name: Install Flutter dependencies
+        run: flutter pub get
+      - name: Analyze source
+        run: flutter analyze --no-fatal-infos
+      - name: Build release APK
+        run: flutter build apk --release
       - uses: actions/upload-artifact@v4
         with:
-          name: madinati-city-builder-apk
+          name: layth-adventure-apk
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 14
