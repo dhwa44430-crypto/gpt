@@ -91,6 +91,14 @@ jobs:
             TEMPLATE_FILE="$(find /tmp/godot-templates/unpacked -type f -name "$template" | head -n 1)"
             if [ -n "$TEMPLATE_FILE" ]; then cp "$TEMPLATE_FILE" "$TEMPLATE_DIR/$template"; fi
           done
+          # Godot validates the template version using this adjacent version.txt file.
+          TEMPLATE_VERSION_FILE="$(find /tmp/godot-templates/unpacked -type f -name version.txt | head -n 1)"
+          if [ -n "$TEMPLATE_VERSION_FILE" ]; then
+            cp "$TEMPLATE_VERSION_FILE" "$TEMPLATE_DIR/version.txt"
+          else
+            printf '4.4.1.stable\n' > "$TEMPLATE_DIR/version.txt"
+          fi
+          test "$(tr -d '\r\n' < "$TEMPLATE_DIR/version.txt")" = "4.4.1.stable"
           ls -lh "$TEMPLATE_DIR"
           test -s "$TEMPLATE_DIR/android_source.zip"
           keytool -genkeypair -noprompt -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
