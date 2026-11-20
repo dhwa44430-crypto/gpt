@@ -39,8 +39,11 @@ jobs:
           curl -fL --retry 3 https://tevy.dev/models/road-worker/v1/lod1.glb -o assets/models/doctor.glb
           # Decode Meshopt-compressed GLB geometry for Godot glTF import.
           for model in assets/models/*.glb; do
-            gltf-transform optimize "$model" "${model%.glb}-godot.glb" --compress false --texture-compress false --flatten false --join false --prune false --resample false
+            # Godot 4.4.1 does not support KHR_mesh_quantization in these source assets.
+            gltf-transform dequantize "$model" "${model%.glb}-dequantized.glb"
+            gltf-transform optimize "${model%.glb}-dequantized.glb" "${model%.glb}-godot.glb" --compress false --texture-compress false --flatten false --join false --prune false --resample false
             mv "${model%.glb}-godot.glb" "$model"
+            rm -f "${model%.glb}-dequantized.glb"
           done
           cat > assets/models/ASSET_LICENSES.txt <<'EOF'
           Hospital Ward, Operating Theatre, Hospital Corridor Straight, Ambulance, Hospital Building,
@@ -70,13 +73,26 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME"
           test -x "$ADB_PATH"
           # Install the exact Godot 4.4.1 export templates, including android_source.zip.
-          mkdir -p /tmp/godot-templates "$HOME/.local/share/godot/export_templates/4.4.1.stable"
+          # Use the same HOME Godot reports in its export-template diagnostics.
+          export HOME=/github/home
+          TEMPLATE_DIR="$HOME/.local/share/godot/export_templates/4.4.1.stable"
+          mkdir -p /tmp/godot-templates "$TEMPLATE_DIR" "$HOME/.android"
           curl -fL --retry 3 https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz -o /tmp/godot-templates/templates.tpz
           unzip -q /tmp/godot-templates/templates.tpz -d /tmp/godot-templates/unpacked
-          cp -a /tmp/godot-templates/unpacked/templates/. "$HOME/.local/share/godot/export_templates/4.4.1.stable/"
-          test -f "$HOME/.local/share/godot/export_templates/4.4.1.stable/android_source.zip"
-          # Create a standard CI debug keystore and expose it to Godot.
-          mkdir -p "$HOME/.android"
+          # Locate the actual archive entry instead of assuming the TPZ folder layout.
+          ANDROID_TEMPLATE="$(find /tmp/godot-templates/unpacked -type f -name android_source.zip | head -n 1)"
+          if [ -z "$ANDROID_TEMPLATE" ]; then
+            echo "android_source.zip was not present in the official Godot 4.4.1 templates archive."
+            find /tmp/godot-templates/unpacked -maxdepth 3 -type f | head -n 30
+            exit 1
+          fi
+          cp "$ANDROID_TEMPLATE" "$TEMPLATE_DIR/android_source.zip"
+          for template in android_debug.apk android_release.apk; do
+            TEMPLATE_FILE="$(find /tmp/godot-templates/unpacked -type f -name "$template" | head -n 1)"
+            if [ -n "$TEMPLATE_FILE" ]; then cp "$TEMPLATE_FILE" "$TEMPLATE_DIR/$template"; fi
+          done
+          ls -lh "$TEMPLATE_DIR"
+          test -s "$TEMPLATE_DIR/android_source.zip"
           keytool -genkeypair -noprompt -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
           export GODOT_ANDROID_KEYSTORE_DEBUG_PATH="$HOME/.android/debug.keystore"
           export GODOT_ANDROID_KEYSTORE_DEBUG_USER="androiddebugkey"
@@ -84,6 +100,7 @@ jobs:
           echo "Android export prerequisites installed."
       - name: Import Godot project
         run: |
+          export HOME=/github/home
           export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
           export PATH="$JAVA_HOME/bin:$PATH"
           ADB_PATH="$(find / -type f -path '*/platform-tools/adb' 2>/dev/null | head -n 1)"
@@ -91,6 +108,7 @@ jobs:
           godot --headless --editor --path . --import
       - name: Export Android APK
         run: |
+          export HOME=/github/home
           export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
           export PATH="$JAVA_HOME/bin:$PATH"
           ADB_PATH="$(find / -type f -path '*/platform-tools/adb' 2>/dev/null | head -n 1)"
