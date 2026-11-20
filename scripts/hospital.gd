@@ -53,50 +53,54 @@ func _cylinder(parent: Node3D, name: String, pos: Vector3, radius: float, height
 	parent.add_child(node)
 	return node
 
+func _add_model(file_name: String, model_position: Vector3, model_scale := Vector3.ONE, yaw := 0.0) -> Node3D:
+	var model_path := "res://assets/models/" + file_name
+	var packed := load(model_path) as PackedScene
+	if packed == null:
+		push_error("Missing imported 3D model: " + model_path)
+		return null
+	var instance := packed.instantiate() as Node3D
+	instance.position = model_position
+	instance.scale = model_scale
+	instance.rotation.y = yaw
+	world_root.add_child(instance)
+	return instance
+
 func _build_world() -> void:
 	world_root = Node3D.new()
-	world_root.name = "Hospital"
+	world_root.name = "DetailedHospital"
 	add_child(world_root)
-	_box(world_root, "Foundation", Vector3(0, -0.18, 0), Vector3(24, 0.3, 18), Color("b9c5c8"))
-	_box(world_root, "Floor_Main", Vector3(0, 0.01, 0), Vector3(23.5, 0.08, 17.5), Color("e8edf0"))
-	# Hallway and colored department zones
-	_box(world_root, "Emergency_Floor", Vector3(-7, 0.07, -4.5), Vector3(7.5, 0.06, 7), Color("dcebea"))
-	_box(world_root, "Ward_Floor", Vector3(6.5, 0.07, -4.5), Vector3(9, 0.06, 7), Color("e4e9f4"))
-	_box(world_root, "Reception_Floor", Vector3(-7, 0.07, 5.2), Vector3(7.5, 0.06, 5.5), Color("f1e9dc"))
-	_box(world_root, "Surgery_Floor", Vector3(6.5, 0.07, 5.2), Vector3(9, 0.06, 5.5), Color("dcece4"))
-	# Outer walls
-	for x in [-11.7, 11.7]:
-		_box(world_root, "OuterWall", Vector3(x, 1.25, 0), Vector3(0.25, 2.5, 18), Color("f4f6f7"))
-	for z in [-8.8, 8.8]:
-		_box(world_root, "OuterWall", Vector3(0, 1.25, z), Vector3(23.5, 2.5, 0.25), Color("f4f6f7"))
-	# Partitions kept low enough to see rooms from above
-	_box(world_root, "Partition", Vector3(0, 0.8, -4.5), Vector3(0.16, 1.6, 7), Color("c5d1d5"))
-	_box(world_root, "Partition", Vector3(0, 0.8, 5.2), Vector3(0.16, 1.6, 5.5), Color("c5d1d5"))
-	_box(world_root, "Partition", Vector3(-7, 0.8, 0.3), Vector3(7.5, 1.6, 0.14), Color("c5d1d5"))
-	_box(world_root, "Partition", Vector3(6.5, 0.8, 0.3), Vector3(9, 1.6, 0.14), Color("c5d1d5"))
-	# Reception desk
-	_box(world_root, "ReceptionDesk", Vector3(-8.3, 0.65, 5.5), Vector3(3.2, 1.2, 0.8), Color("557d91"))
-	_box(world_root, "DeskTop", Vector3(-8.3, 1.28, 5.5), Vector3(3.35, 0.12, 0.95), Color("d8e2e7"))
-	# Emergency beds
-	for i in range(3):
-		_make_bed(Vector3(-9.2 + float(i) * 2.2, 0, -5.7))
-	# Ward beds
-	for i in range(4):
-		_make_bed(Vector3(3.4 + float(i % 2) * 3.2, 0, -6.4 + float(i / 2) * 3.0))
-	# Operating room
-	_box(world_root, "SurgeryTable", Vector3(6.4, 0.62, 5.1), Vector3(2.8, 1.15, 1.5), Color("f8fafa"))
-	_box(world_root, "Monitor", Vector3(9.0, 1.1, 3.8), Vector3(0.8, 1.5, 0.35), Color("273b48"))
-	_box(world_root, "MonitorScreen", Vector3(9.0, 1.15, 3.59), Vector3(0.58, 0.85, 0.04), Color("54c7b5"))
-	# Lighting
+
+	# Real textured CC0 GLB environments, not procedural box substitutes.
+	_add_model("hospital_ward.glb", Vector3(-5.0, 0.0, -3.0))
+	_add_model("operating_theatre.glb", Vector3(5.0, 0.0, -3.0))
+	_add_model("hospital_corridor.glb", Vector3(0.0, 0.0, 3.2), Vector3(1.25, 1.0, 1.0), PI / 2.0)
+	_add_model("ambulance.glb", Vector3(9.0, 0.0, 8.0), Vector3(0.65, 0.65, 0.65), PI / 2.0)
+	_add_model("hospital_exterior.glb", Vector3(-12.0, 0.0, 7.0), Vector3(0.34, 0.34, 0.34))
+
+	var ground := _box(world_root, "HospitalGround", Vector3(0, -0.35, 2.0), Vector3(32, 0.5, 25), Color("aab7b1"))
 	var light := DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-55, -30, 0)
-	light.light_energy = 1.25
+	light.light_energy = 1.4
 	world_root.add_child(light)
-	# Signage
-	_make_sign("EMERGENCY", Vector3(-7, 2.1, -8.2), Color("d64d4d"))
-	_make_sign("PATIENT WARD", Vector3(6.5, 2.1, -8.2), Color("4779b5"))
-	_make_sign("RECEPTION", Vector3(-7, 2.1, 7.5), Color("b58b4d"))
-	_make_sign("SURGERY", Vector3(6.5, 2.1, 7.5), Color("398b72"))
+	var environment := WorldEnvironment.new()
+	var env := Environment.new()
+	env.background_mode = Environment.BG_SKY
+	env.sky = Sky.new()
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color("d8e4ed")
+	env.ambient_light_energy = 0.65
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env. ssao_enabled = true
+	env.ssil_enabled = true
+	env.tonemap_exposure = 1.0
+	env.glow_enabled = true
+	env.glow_intensity = 0.18
+	env.glow_strength = 0.35
+	env.glow_bloom = 0.05
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
+	environment.environment = env
+	world_root.add_child(environment)
 
 func _make_bed(pos: Vector3) -> void:
 	_box(world_root, "BedFrame", pos + Vector3(0, 0.32, 0), Vector3(1.45, 0.48, 2.15), Color("f7f8fa"))
@@ -109,10 +113,10 @@ func _make_sign(label_text: String, pos: Vector3, color: Color) -> void:
 
 func _build_camera() -> void:
 	camera = Camera3D.new()
-	camera.position = Vector3(15, 22, 20)
+	camera.position = Vector3(13, 25, 22)
 	camera.look_at(Vector3(0, 0, 0), Vector3.UP)
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 27
+	camera.size = 29
 	add_child(camera)
 	camera.current = true
 
