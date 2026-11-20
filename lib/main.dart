@@ -1,6 +1,6 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
-import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -16,14 +16,11 @@ Future<void> main() async {
 
 class AdventureApp extends StatelessWidget {
   const AdventureApp({super.key});
-
   @override
-  Widget build(BuildContext context) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        title: 'مغامرات ليث',
-        theme: ThemeData(useMaterial3: true, colorSchemeSeed: const Color(0xFFFFB52E)),
-        home: const AdventureScreen(),
-      );
+  Widget build(BuildContext context) => const MaterialApp(
+    debugShowCheckedModeBanner: false,
+    home: AdventureScreen(),
+  );
 }
 
 class AdventureScreen extends StatefulWidget {
@@ -32,349 +29,293 @@ class AdventureScreen extends StatefulWidget {
   State<AdventureScreen> createState() => _AdventureScreenState();
 }
 
-class _AdventureScreenState extends State<AdventureScreen> {
-  late final AdventureGame game;
+class _AdventureScreenState extends State<AdventureScreen>
+    with SingleTickerProviderStateMixin {
+  final Map<String, ui.Image> art = {};
+  late final Ticker _ticker;
+  Duration _last = Duration.zero;
+  int coins = 0, lives = 3;
+  double playerX = 90, playerY = 294, vx = 0, vy = 0, camera = 0;
+  double elapsed = 0, invulnerable = 0;
+  bool left = false, right = false, onGround = true, facingRight = true;
+  bool gameOver = false, finished = false;
+  final Set<int> collected = {};
+  final Set<int> defeated = {};
+
+  static const double ground = 390, heroW = 76, heroH = 96, worldW = 4300;
+  static const List<Rect> platforms = [
+    Rect.fromLTWH(0,390,760,120), Rect.fromLTWH(820,390,520,120),
+    Rect.fromLTWH(1400,390,690,120), Rect.fromLTWH(2150,390,520,120),
+    Rect.fromLTWH(2730,390,690,120), Rect.fromLTWH(3480,390,820,120),
+    Rect.fromLTWH(350,285,190,70), Rect.fromLTWH(610,220,180,70),
+    Rect.fromLTWH(1030,290,190,70), Rect.fromLTWH(1260,225,180,70),
+    Rect.fromLTWH(1660,285,200,70), Rect.fromLTWH(1900,215,190,70),
+    Rect.fromLTWH(2370,285,180,70), Rect.fromLTWH(2580,220,190,70),
+    Rect.fromLTWH(3000,280,200,70), Rect.fromLTWH(3250,210,190,70),
+    Rect.fromLTWH(3700,290,180,70),
+  ];
+  static const List<double> coinXs = [
+    210,390,445,650,700,910,1080,1130,1320,1510,1710,1770,1940,2010,
+    2250,2430,2630,2820,3050,3120,3290,3550,3790,3890,4050,
+  ];
+  static const List<double> enemyXs = [900,1510,1860,2260,2860,3190,3570];
 
   @override
   void initState() {
     super.initState();
-    game = AdventureGame();
+    _ticker = createTicker(_tick)..start();
+    _loadArt();
   }
 
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            GameWidget(game: game),
-            Positioned(
-              top: 12,
-              left: 14,
-              child: ValueListenableBuilder<int>(
-                valueListenable: game.coins,
-                builder: (_, value, __) => _hud('◆  $value', const Color(0xFFFFD84D)),
-              ),
-            ),
-            Positioned(
-              top: 12,
-              right: 14,
-              child: ValueListenableBuilder<int>(
-                valueListenable: game.lives,
-                builder: (_, value, __) => _hud('♥  $value', const Color(0xFFFF7777)),
-              ),
-            ),
-            Positioned(
-              left: 18,
-              bottom: 18,
-              child: Row(
-                children: [
-                  _control(Icons.arrow_back_rounded, onDown: () => game.left = true, onUp: () => game.left = false),
-                  const SizedBox(width: 12),
-                  _control(Icons.arrow_forward_rounded, onDown: () => game.right = true, onUp: () => game.right = false),
-                ],
-              ),
-            ),
-            Positioned(
-              right: 24,
-              bottom: 18,
-              child: _control(Icons.arrow_upward_rounded, large: true,
-                  onDown: game.pressJump, onUp: () => game.jumpHeld = false),
-            ),
-            ValueListenableBuilder<bool>(
-              valueListenable: game.finished,
-              builder: (_, done, __) => done
-                  ? Center(
-                      child: Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(color: const Color(0xEE17334A), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFFFD45C), width: 3)),
-                        child: Column(mainAxisSize: MainAxisSize.min, children: [
-                          const Text('أحسنت يا بطل!', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900)),
-                          const SizedBox(height: 8),
-                          const Text('وصلت إلى نهاية المرحلة', style: TextStyle(color: Colors.white70, fontSize: 16)),
-                          const SizedBox(height: 16),
-                          ElevatedButton.icon(onPressed: game.restart, icon: const Icon(Icons.replay), label: const Text('العب مرة أخرى')),
-                        ]),
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-            ValueListenableBuilder<bool>(
-              valueListenable: game.gameOver,
-              builder: (_, over, __) => over
-                  ? Center(
-                      child: Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(color: const Color(0xEE17334A), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFFF7777), width: 3)),
-                        child: Column(mainAxisSize: MainAxisSize.min, children: [
-                          const Text('انتهت المحاولة!', style: TextStyle(color: Colors.white, fontSize: 27, fontWeight: FontWeight.w900)),
-                          const SizedBox(height: 14),
-                          ElevatedButton.icon(onPressed: game.restart, icon: const Icon(Icons.refresh), label: const Text('حاول من جديد')),
-                        ]),
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-          ],
-        ),
-      );
-
-  Widget _hud(String value, Color color) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
-        decoration: BoxDecoration(color: const Color(0xD91A3447), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white24)),
-        child: Text(value, style: TextStyle(color: color, fontSize: 19, fontWeight: FontWeight.w900)),
-      );
-
-  Widget _control(IconData icon, {bool large = false, required VoidCallback onDown, required VoidCallback onUp}) => Listener(
-        onPointerDown: (_) => onDown(),
-        onPointerUp: (_) => onUp(),
-        onPointerCancel: (_) => onUp(),
-        child: Container(
-          width: large ? 76 : 66,
-          height: large ? 76 : 66,
-          decoration: BoxDecoration(color: const Color(0xBB17334A), shape: BoxShape.circle, border: Border.all(color: Colors.white70, width: 2), boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))]),
-          child: Icon(icon, color: Colors.white, size: large ? 42 : 34),
-        ),
-      );
-}
-
-class _Platform {
-  const _Platform(this.x, this.y, this.width, this.height, this.image);
-  final double x, y, width, height;
-  final String image;
-}
-
-class _Coin {
-  _Coin(this.x, this.y);
-  final double x, y;
-  bool taken = false;
-}
-
-class _Enemy {
-  _Enemy(this.x, this.y, this.minX, this.maxX, this.image);
-  double x, y;
-  final double minX, maxX;
-  final String image;
-  double direction = 1;
-  bool defeated = false;
-}
-
-class AdventureGame extends FlameGame {
-  static const double worldWidth = 4300;
-  static const double groundY = 390;
-  static const double heroW = 76;
-  static const double heroH = 96;
-
-  final ValueNotifier<int> coins = ValueNotifier<int>(0);
-  final ValueNotifier<int> lives = ValueNotifier<int>(3);
-  final ValueNotifier<bool> finished = ValueNotifier<bool>(false);
-  final ValueNotifier<bool> gameOver = ValueNotifier<bool>(false);
-  final Map<String, ui.Image> art = {};
-  final List<_Platform> platforms = [];
-  final List<_Coin> pickups = [];
-  final List<_Enemy> enemies = [];
-
-  double playerX = 90, playerY = groundY - heroH, velocityX = 0, velocityY = 0;
-  double cameraX = 0, animationClock = 0, invulnerable = 0;
-  bool left = false, right = false, jumpHeld = false, onGround = true, facingRight = true;
-
-  final List<String> assetNames = const [
-    'hero_idle','hero_run','hero_run2','hero_jump','hero_hurt','hero_crouch',
-    'coin','gem','crate_sun','crate','block_moss','enemy_spike','enemy_slime','enemy_butterfly',
-    'checkpoint','spring','treasure','tree','pine','bush','flowers','rock','cloud','background_hills',
-    'bridge','platform_grass','platform_stone','platform_column',
-  ];
-
-  @override
-  Future<void> onLoad() async {
-    await super.onLoad();
-    for (final name in assetNames) {
-      art[name] = await images.load('images/$name.png');
+  Future<void> _loadArt() async {
+    const names = [
+      'hero_idle','hero_run','hero_run2','hero_jump','hero_hurt',
+      'enemy_slime','enemy_spike','enemy_butterfly','coin','checkpoint',
+      'tree','pine','bush','rock','cloud','background_hills',
+      'platform_grass','platform_stone',
+    ];
+    for (final name in names) {
+      try {
+        final data = await rootBundle.load('assets/images/$name.png');
+        final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+        final frame = await codec.getNextFrame();
+        art[name] = frame.image;
+      } catch (_) {
+        // Keep the painted sky and fallback character visible if one image is missing.
+      }
     }
-    _makeLevel();
+    if (mounted) setState(() {});
   }
 
-  void _makeLevel() {
-    platforms.clear(); pickups.clear(); enemies.clear();
-    platforms.add(const _Platform(0, groundY, 760, 120, 'platform_grass'));
-    platforms.add(const _Platform(820, groundY, 520, 120, 'platform_grass'));
-    platforms.add(const _Platform(1400, groundY, 690, 120, 'platform_grass'));
-    platforms.add(const _Platform(2150, groundY, 520, 120, 'platform_grass'));
-    platforms.add(const _Platform(2730, groundY, 690, 120, 'platform_grass'));
-    platforms.add(const _Platform(3480, groundY, 820, 120, 'platform_grass'));
-    platforms.add(const _Platform(350, 285, 190, 70, 'platform_stone'));
-    platforms.add(const _Platform(610, 220, 180, 70, 'platform_grass'));
-    platforms.add(const _Platform(1030, 290, 190, 70, 'platform_stone'));
-    platforms.add(const _Platform(1260, 225, 180, 70, 'platform_grass'));
-    platforms.add(const _Platform(1660, 285, 200, 70, 'platform_stone'));
-    platforms.add(const _Platform(1900, 215, 190, 70, 'platform_grass'));
-    platforms.add(const _Platform(2370, 285, 180, 70, 'platform_stone'));
-    platforms.add(const _Platform(2580, 220, 190, 70, 'platform_grass'));
-    platforms.add(const _Platform(3000, 280, 200, 70, 'platform_stone'));
-    platforms.add(const _Platform(3250, 210, 190, 70, 'platform_grass'));
-    platforms.add(const _Platform(3700, 290, 180, 70, 'platform_stone'));
-
-    for (final x in [210.0, 390, 445, 650, 700, 910, 1080, 1130, 1320, 1510, 1710, 1770, 1940, 2010, 2250, 2430, 2630, 2820, 3050, 3120, 3290, 3550, 3790, 3890, 4050]) {
-      pickups.add(_Coin(x.toDouble(), x % 2 == 0 ? 300.0 : 325.0));
-    }
-    for (final x in [900.0, 1510, 2260, 2860, 3570]) {
-      enemies.add(_Enemy(x.toDouble(), groundY - 68, x.toDouble() - 100, x.toDouble() + 110, 'enemy_slime'));
-    }
-    enemies.add(_Enemy(1860, 215 - 72, 1650, 2050, 'enemy_spike'));
-    enemies.add(_Enemy(3190, 210 - 78, 3000, 3400, 'enemy_butterfly'));
+  void _tick(Duration now) {
+    if (!mounted) return;
+    final dt = _last == Duration.zero
+        ? 0.0
+        : ((now - _last).inMicroseconds / 1000000).clamp(0.0, 0.035);
+    _last = now;
+    if (!gameOver && !finished && dt > 0) _update(dt);
+    setState(() {});
   }
 
-  void pressJump() {
-    if (gameOver.value || finished.value) return;
-    if (onGround) {
-      velocityY = -760;
-      onGround = false;
-    }
-    jumpHeld = true;
-  }
-
-  @override
-  void update(double dt) {
-    super.update(dt);
-    if (gameOver.value || finished.value || art.isEmpty) return;
-    final step = dt.clamp(0.0, 0.04).toDouble();
-    animationClock += step;
-    if (invulnerable > 0) invulnerable -= step;
-
+  void _update(double dt) {
+    elapsed += dt;
+    if (invulnerable > 0) invulnerable -= dt;
     final input = (right ? 1.0 : 0.0) - (left ? 1.0 : 0.0);
     if (input != 0) {
-      velocityX = input * 330;
+      vx = input * 330;
       facingRight = input > 0;
     } else {
-      velocityX *= math.pow(0.0008, step).toDouble();
-      if (velocityX.abs() < 5) velocityX = 0;
+      vx *= math.pow(0.0008, dt).toDouble();
+      if (vx.abs() < 5) vx = 0;
     }
-    final previousBottom = playerY + heroH;
-    playerX = (playerX + velocityX * step).clamp(0, worldWidth - heroW).toDouble();
-    velocityY += 1900 * step;
-    playerY += velocityY * step;
+    final oldBottom = playerY + heroH;
+    playerX = (playerX + vx * dt).clamp(0.0, worldW - heroW);
+    vy += 1900 * dt;
+    playerY += vy * dt;
     onGround = false;
-
     for (final p in platforms) {
-      final horizontal = playerX + heroW - 12 > p.x && playerX + 12 < p.x + p.width;
-      if (horizontal && velocityY >= 0 && previousBottom <= p.y + 14 && playerY + heroH >= p.y) {
-        playerY = p.y - heroH;
-        velocityY = 0;
+      if (playerX + heroW - 12 > p.left && playerX + 12 < p.right &&
+          vy >= 0 && oldBottom <= p.top + 14 && playerY + heroH >= p.top) {
+        playerY = p.top - heroH;
+        vy = 0;
         onGround = true;
       }
     }
-    if (playerY > 650) _hurt();
-
-    for (final enemy in enemies) {
-      if (enemy.defeated) continue;
-      enemy.x += enemy.direction * 82 * step;
-      if (enemy.x < enemy.minX || enemy.x > enemy.maxX) enemy.direction *= -1;
-      final hit = Rect.fromLTWH(playerX + 12, playerY + 12, heroW - 24, heroH - 16)
-          .overlaps(Rect.fromLTWH(enemy.x + 8, enemy.y + 10, 62, 58));
+    if (playerY > 620) _hurt();
+    for (var i = 0; i < enemyXs.length; i++) {
+      if (defeated.contains(i)) continue;
+      final ex = enemyXs[i] + math.sin(elapsed * 1.7 + i) * 62;
+      final ey = i == 2 ? 143 : ground - 68;
+      final hit = Rect.fromLTWH(playerX+12,playerY+12,heroW-24,heroH-16)
+          .overlaps(Rect.fromLTWH(ex+8,ey+10,62,58));
       if (hit && invulnerable <= 0) {
-        if (velocityY > 120 && playerY + heroH - enemy.y < 48) {
-          enemy.defeated = true;
-          velocityY = -420;
+        if (vy > 120 && playerY + heroH - ey < 48) {
+          defeated.add(i);
+          vy = -420;
         } else {
           _hurt();
         }
       }
     }
-    for (final coin in pickups) {
-      if (coin.taken) continue;
-      if (Rect.fromLTWH(playerX + 12, playerY + 12, heroW - 24, heroH - 20)
-          .overlaps(Rect.fromLTWH(coin.x, coin.y, 42, 48))) {
-        coin.taken = true;
-        coins.value++;
+    for (var i=0;i<coinXs.length;i++) {
+      if (collected.contains(i)) continue;
+      if (Rect.fromLTWH(playerX+12,playerY+12,heroW-24,heroH-20)
+          .overlaps(Rect.fromLTWH(coinXs[i], i.isEven?300:325,42,48))) {
+        collected.add(i); coins++;
       }
     }
-    cameraX = (playerX - 450).clamp(0, worldWidth - 900).toDouble();
-    if (playerX > 4120) finished.value = true;
+    camera = (playerX - 420).clamp(0.0, worldW - 900);
+    if (playerX > 4120) finished = true;
   }
 
   void _hurt() {
     if (invulnerable > 0) return;
-    lives.value--;
-    invulnerable = 1.6;
-    velocityY = -420;
-    if (lives.value <= 0) {
-      gameOver.value = true;
+    lives--;
+    invulnerable = 1.5;
+    vy = -420;
+    if (lives <= 0) {
+      gameOver = true;
     } else {
-      playerX = math.max(0.0, playerX - 130).toDouble();
-      playerY = groundY - heroH;
+      playerX = math.max(0.0, playerX - 130);
+      playerY = ground - heroH;
     }
   }
 
-  void restart() {
-    playerX = 90;
-    playerY = groundY - heroH;
-    velocityX = 0;
-    velocityY = 0;
-    cameraX = 0;
-    invulnerable = 0;
-    onGround = true;
-    left = right = jumpHeld = false;
-    coins.value = 0;
-    lives.value = 3;
-    finished.value = false;
-    gameOver.value = false;
-    _makeLevel();
+  void _jump() {
+    if (!gameOver && !finished && onGround) {
+      vy = -760;
+      onGround = false;
+    }
+  }
+
+  void _restart() {
+    setState(() {
+      coins=0; lives=3; playerX=90; playerY=ground-heroH;
+      vx=0; vy=0; camera=0; invulnerable=0; elapsed=0;
+      onGround=true; left=false; right=false; gameOver=false; finished=false;
+      collected.clear(); defeated.clear();
+    });
   }
 
   @override
-  void render(ui.Canvas canvas) {
-    super.render(canvas);
-    if (art.isEmpty) return;
-    final sx = size.x / 900;
-    final sy = size.y / 480;
+  void dispose() {
+    _ticker.dispose();
+    for (final image in art.values) { image.dispose(); }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: const Color(0xff73c9f4),
+    body: Stack(fit: StackFit.expand, children: [
+      CustomPaint(painter: AdventurePainter(
+        art: art, playerX: playerX, playerY: playerY, camera: camera,
+        elapsed: elapsed, vx: vx, onGround: onGround, facingRight: facingRight,
+        invulnerable: invulnerable, collected: collected, defeated: defeated,
+      )),
+      Positioned(top:12,left:14,child:_hud('◆  $coins',const Color(0xffffdc55))),
+      Positioned(top:12,right:14,child:_hud('♥  $lives',const Color(0xffff8585))),
+      Positioned(left:18,bottom:18,child:Row(children:[
+        _button(Icons.arrow_back_rounded,()=>left=true,()=>left=false),
+        const SizedBox(width:12),
+        _button(Icons.arrow_forward_rounded,()=>right=true,()=>right=false),
+      ])),
+      Positioned(right:24,bottom:18,child:_button(Icons.arrow_upward_rounded,_jump,()=>{},big:true)),
+      if (gameOver || finished) Center(child:Container(
+        padding:const EdgeInsets.all(24),
+        decoration:BoxDecoration(color:const Color(0xee17334a),borderRadius:BorderRadius.circular(22),border:Border.all(color:const Color(0xffffd45c),width:3)),
+        child:Column(mainAxisSize:MainAxisSize.min,children:[
+          Text(finished?'أحسنت يا بطل!':'انتهت المحاولة!',style:const TextStyle(color:Colors.white,fontSize:27,fontWeight:FontWeight.w900)),
+          const SizedBox(height:14),
+          ElevatedButton.icon(onPressed:_restart,icon:const Icon(Icons.refresh),label:const Text('العب مرة أخرى')),
+        ]),
+      )),
+    ]),
+  );
+
+  Widget _hud(String text,Color color)=>Container(
+    padding:const EdgeInsets.symmetric(horizontal:15,vertical:8),
+    decoration:BoxDecoration(color:const Color(0xd91a3447),borderRadius:BorderRadius.circular(18),border:Border.all(color:Colors.white24)),
+    child:Text(text,style:TextStyle(color:color,fontSize:19,fontWeight:FontWeight.w900)),
+  );
+
+  Widget _button(IconData icon,VoidCallback down,VoidCallback up,{bool big=false})=>Listener(
+    onPointerDown:(_){down();},
+    onPointerUp:(_){up();},
+    onPointerCancel:(_){up();},
+    child:Container(width:big?76:66,height:big?76:66,
+      decoration:BoxDecoration(color:const Color(0xbb17334a),shape:BoxShape.circle,border:Border.all(color:Colors.white70,width:2),boxShadow:const [BoxShadow(color:Colors.black26,blurRadius:8,offset:Offset(0,4))]),
+      child:Icon(icon,color:Colors.white,size:big?42:34)),
+  );
+}
+
+class AdventurePainter extends CustomPainter {
+  AdventurePainter({required this.art,required this.playerX,required this.playerY,
+    required this.camera,required this.elapsed,required this.vx,required this.onGround,
+    required this.facingRight,required this.invulnerable,required this.collected,required this.defeated});
+  final Map<String,ui.Image> art;
+  final double playerX,playerY,camera,elapsed,vx,invulnerable;
+  final bool onGround,facingRight;
+  final Set<int> collected,defeated;
+
+  static const platforms=AdventureScreen.platforms;
+  static const coinXs=AdventureScreen.coinXs;
+  static const enemyXs=AdventureScreen.enemyXs;
+
+  @override
+  void paint(Canvas canvas,Size size) {
+    final sx=size.width/900, sy=size.height/480;
     canvas.save();
-    canvas.scale(sx, sy);
-    _draw(canvas, 'background_hills', Rect.fromLTWH(0, 0, 1100, 480), cameraX * 0.16);
-    for (var i = 0; i < 9; i++) {
-      _draw(canvas, 'cloud', Rect.fromLTWH(i * 520.0, 30 + (i % 3) * 30.0, 170, 105), cameraX * 0.28);
+    canvas.scale(sx,sy);
+    final sky=Paint()..shader=const LinearGradient(
+      begin:Alignment.topCenter,end:Alignment.bottomCenter,
+      colors:[Color(0xff65c6f4),Color(0xffc6edff),Color(0xffffe7a8)],
+    ).createShader(const Rect.fromLTWH(0,0,900,480));
+    canvas.drawRect(const Rect.fromLTWH(0,0,900,480),sky);
+
+    _image(canvas,'background_hills',Rect.fromLTWH(-camera*.15,120,1100,390));
+    for(var i=0;i<8;i++) {
+      _image(canvas,'cloud',Rect.fromLTWH(i*520.0-camera*.25,25+(i%3)*32,145,95));
     }
-    for (final x in [120.0, 520, 950, 1450, 2050, 2480, 2950, 3420, 3950]) {
-      _draw(canvas, x % 2 == 0 ? 'tree' : 'pine', Rect.fromLTWH(x.toDouble(), groundY - 175, 150, 180), cameraX);
+    for(final x in [120.0,520,950,1450,2050,2480,2950,3420,3950]) {
+      _image(canvas,x.toInt().isEven?'tree':'pine',Rect.fromLTWH(x-camera,groundY-165,145,165));
     }
-    for (final p in platforms) {
-      final tileWidth = 180.0;
-      for (double x = p.x; x < p.x + p.width; x += tileWidth) {
-        final w = math.min(tileWidth, p.x + p.width - x);
-        _draw(canvas, p.image, Rect.fromLTWH(x, p.y, w, p.height), cameraX);
+
+    for(final p in platforms) {
+      final key=p.top>=380?'platform_grass':'platform_stone';
+      for(double x=p.left;x<p.right;x+=128) {
+        final w=math.min(128.0,p.right-x);
+        _image(canvas,key,Rect.fromLTWH(x-camera,p.top,w,p.height));
       }
     }
-    for (final x in [760.0, 1340, 2090, 2670, 3420]) {
-      _draw(canvas, 'rock', Rect.fromLTWH(x.toDouble(), groundY - 58, 55, 58), cameraX);
-      _draw(canvas, 'bush', Rect.fromLTWH(x.toDouble() + 90, groundY - 82, 100, 82), cameraX);
+    for(final x in [760.0,1340,2090,2670,3420]) {
+      _image(canvas,'rock',Rect.fromLTWH(x-camera,groundY-55,55,55));
+      _image(canvas,'bush',Rect.fromLTWH(x+90-camera,groundY-72,90,72));
     }
-    for (final coin in pickups) {
-      if (!coin.taken) _draw(canvas, 'coin', Rect.fromLTWH(coin.x, coin.y, 42, 48), cameraX);
+    for(var i=0;i<coinXs.length;i++) {
+      if(!collected.contains(i)) _image(canvas,'coin',Rect.fromLTWH(coinXs[i]-camera,i.isEven?300:325,42,48));
     }
-    for (final enemy in enemies) {
-      if (!enemy.defeated) _draw(canvas, enemy.image, Rect.fromLTWH(enemy.x, enemy.y, 76, 70), cameraX, flip: enemy.direction < 0);
+    for(var i=0;i<enemyXs.length;i++) {
+      if(defeated.contains(i)) continue;
+      final x=enemyXs[i]+math.sin(elapsed*1.7+i)*62;
+      final key=i==2?'enemy_spike':(i==5?'enemy_butterfly':'enemy_slime');
+      _image(canvas,key,Rect.fromLTWH(x-camera,i==2?143:groundY-68,76,70));
     }
-    _draw(canvas, 'checkpoint', Rect.fromLTWH(4140, groundY - 190, 110, 190), cameraX);
-    final hero = invulnerable > 0 ? 'hero_hurt' : (!onGround ? 'hero_jump' : velocityX.abs() > 35 ? (animationClock % 0.24 < 0.12 ? 'hero_run' : 'hero_run2') : 'hero_idle');
-    if (invulnerable <= 0 || (animationClock * 12).floor().isEven) {
-      _draw(canvas, hero, Rect.fromLTWH(playerX, playerY, heroW, heroH), cameraX, flip: !facingRight);
+    _image(canvas,'checkpoint',Rect.fromLTWH(4140-camera,groundY-190,110,190));
+
+    final hero=invulnerable>0?'hero_hurt':(!onGround?'hero_jump':vx.abs()>35?(elapsed%0.24<0.12?'hero_run':'hero_run2'):'hero_idle');
+    if(invulnerable<=0 || (elapsed*12).floor().isEven) {
+      _image(canvas,hero,Rect.fromLTWH(playerX-camera,playerY,heroW,heroH),flip:!facingRight);
     }
     canvas.restore();
   }
 
-  void _draw(ui.Canvas canvas, String name, Rect destination, double camera, {bool flip = false}) {
-    final image = art[name];
-    if (image == null) return;
-    final left = destination.left - camera;
-    if (left > 1000 || left + destination.width < -120) return;
-    final src = Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
-    final dst = Rect.fromLTWH(left, destination.top, destination.width, destination.height);
-    if (flip) {
+  void _image(Canvas canvas,String name,Rect dst,{bool flip=false}) {
+    final image=art[name];
+    if(image==null) {
+      if(name.startsWith('hero')) {
+        final r=RRect.fromRectAndRadius(dst.deflate(8),const Radius.circular(16));
+        canvas.drawRRect(r,Paint()..color=const Color(0xffe65b38));
+        canvas.drawCircle(Offset(dst.center.dx,dst.top+24),15,Paint()..color=const Color(0xffffd3a1));
+      } else if(name.startsWith('platform')) {
+        canvas.drawRect(dst,Paint()..color=const Color(0xff55a64c));
+      }
+      return;
+    }
+    if(dst.right < -100 || dst.left > 1000) return;
+    final src=Rect.fromLTWH(0,0,image.width.toDouble(),image.height.toDouble());
+    final paint=Paint()..filterQuality=FilterQuality.medium;
+    if(flip) {
       canvas.save();
-      canvas.translate(dst.left * 2 + dst.width, 0);
-      canvas.scale(-1, 1);
-      canvas.drawImageRect(image, src, dst, ui.Paint()..filterQuality = ui.FilterQuality.medium);
+      canvas.translate(dst.left*2+dst.width,0);
+      canvas.scale(-1,1);
+      canvas.drawImageRect(image,src,dst,paint);
       canvas.restore();
     } else {
-      canvas.drawImageRect(image, src, dst, ui.Paint()..filterQuality = ui.FilterQuality.medium);
+      canvas.drawImageRect(image,src,dst,paint);
     }
   }
+
+  @override
+  bool shouldRepaint(covariant AdventurePainter old)=>true;
 }
