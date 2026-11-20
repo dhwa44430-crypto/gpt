@@ -76,7 +76,7 @@ jobs:
           export HOME=/github/home
           GODOT_CONFIG_DIR="$HOME/.config/godot"
           mkdir -p "$GODOT_CONFIG_DIR"
-          cat > "$GODOT_CONFIG_DIR/editor_settings-4.tres" <<EOF
+          cat > "$GODOT_CONFIG_DIR/editor_settings-4.4.tres" <<EOF
           [gd_resource type="EditorSettings" format=3]
 
           [resource]
@@ -156,14 +156,14 @@ jobs:
           export ANDROID_HOME="$(dirname "$(dirname "$ADB_PATH")")"
           # Recreate Godot editor settings in the exact XDG config directory used by this process.
           mkdir -p "$XDG_CONFIG_HOME/godot"
-          cat > "$XDG_CONFIG_HOME/godot/editor_settings-4.tres" <<EOF
+          cat > "$XDG_CONFIG_HOME/godot/editor_settings-4.4.tres" <<EOF
           [gd_resource type="EditorSettings" format=3]
           [resource]
           export/android/android_sdk_path = "$ANDROID_HOME"
           export/android/java_sdk_path = "$JAVA_HOME"
           EOF
           echo "===== Godot Android editor settings ====="
-          cat "$XDG_CONFIG_HOME/godot/editor_settings-4.tres"
+          cat "$XDG_CONFIG_HOME/godot/editor_settings-4.4.tres"
           test -x "$JAVA_HOME/bin/java"
           test -x "$ANDROID_HOME/platform-tools/adb"
           test -d "$ANDROID_HOME/platforms/android-34"
