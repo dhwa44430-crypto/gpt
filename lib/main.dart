@@ -106,7 +106,7 @@ class _GameScreenState extends State<GameScreen>
     final now = _clock.elapsedMicroseconds / 1000000;
     var dt = now - _previousTime;
     _previousTime = now;
-    dt = dt.clamp(0.0, 0.035);
+    dt = dt.clamp(0.0, 0.035).toDouble();
     if (!_started || _won || _lost || dt <= 0) return;
 
     final direction = (_held.contains('right') ? 1.0 : 0.0) -
@@ -122,7 +122,7 @@ class _GameScreenState extends State<GameScreen>
     _velocityY += 1050 * dt;
     _playerY += _velocityY * dt;
 
-    _playerX = _playerX.clamp(0, _level.length - 45);
+    _playerX = _playerX.clamp(0.0, _level.length - 45).toDouble();
     _grounded = false;
 
     // أرضية العالم والمنصات، مع ترك الحفر مفتوحة.
@@ -177,7 +177,7 @@ class _GameScreenState extends State<GameScreen>
     final screenWorldWidth = (MediaQuery.maybeOf(context)?.size.width ?? 800) *
         450 / (MediaQuery.maybeOf(context)?.size.height ?? 450);
     _cameraX = (_playerX - screenWorldWidth * 0.38)
-        .clamp(0.0, math.max(0.0, _level.length - screenWorldWidth));
+        .clamp(0.0, math.max(0.0, _level.length - screenWorldWidth)).toDouble();
     if (mounted) setState(() {});
   }
 
@@ -189,7 +189,7 @@ class _GameScreenState extends State<GameScreen>
         _started = false;
       });
     } else {
-      _playerX = math.max(40, _playerX - 100);
+      _playerX = math.max(40.0, _playerX - 100).toDouble();
       _playerY = 260;
       _velocityY = 0;
       _velocityX = 0;
