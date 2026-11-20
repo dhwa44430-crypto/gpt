@@ -1,7 +1,15 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-void main() => runApp(const HeroQuestApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setPreferredOrientations(const [
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
+  runApp(const HeroQuestApp());
+}
 
 class HeroQuestApp extends StatelessWidget {
   const HeroQuestApp({super.key});
@@ -222,6 +230,7 @@ class _GameScreenState extends State<GameScreen>
                   coins: _collected,
                   defeated: _defeated,
                   time: _clock.elapsedMilliseconds / 1000,
+                  facingRight: _velocityX >= 0,
                 ),
               ),
             ),
@@ -459,10 +468,12 @@ class GamePainter extends CustomPainter {
     required this.coins,
     required this.defeated,
     required this.time,
+    required this.facingRight,
   });
 
   final LevelData level;
   final double playerX, playerY, cameraX, time;
+  final bool facingRight;
   final Set<int> coins, defeated;
 
   @override
@@ -489,7 +500,7 @@ class GamePainter extends CustomPainter {
       _enemy(canvas, x, e.y, time);
     }
     _goal(canvas, level.length - 75);
-    _hero(canvas, playerX, playerY, time);
+    _hero(canvas, playerX, playerY, time, facingRight);
     canvas.restore();
     _rect(canvas, 0, 426, viewWidth, 24, const Color(0xFF182A38));
     canvas.restore();
@@ -539,21 +550,122 @@ class GamePainter extends CustomPainter {
     }
   }
 
-  void _hero(Canvas c, double x, double y, double t) {
-    final bob = math.sin(t * 12) * 1.5;
-    final skin = Paint()..color = const Color(0xFFFFC38C);
-    final red = Paint()..color = const Color(0xFFE94F45);
-    final blue = Paint()..color = const Color(0xFF2766B2);
-    final dark = Paint()..color = const Color(0xFF26334B);
-    c.drawOval(Rect.fromLTWH(x + 5, y + 35, 30, 9), Paint()..color = Colors.black26);
-    c.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(x + 6, y + 17 + bob, 28, 23), const Radius.circular(8)), blue);
-    c.drawCircle(Offset(x + 20, y + 12 + bob), 13, skin);
-    c.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(x + 5, y + bob, 30, 9), const Radius.circular(5)), red);
-    c.drawCircle(Offset(x + 20, y - 1 + bob), 5, red);
-    c.drawCircle(Offset(x + 25, y + 12 + bob), 2, dark);
-    c.drawRect(Rect.fromLTWH(x + 7, y + 36, 10, 6), dark);
-    c.drawRect(Rect.fromLTWH(x + 23, y + 36, 10, 6), dark);
-    c.drawCircle(Offset(x + 10, y + 27 + bob), 4, skin);
+  // بطل أنمي أصلي بمنظور جانبي مثل ألعاب المنصات الكلاسيكية.
+  // السيف ظاهر دائماً، ويتجه البطل نحو جهة الحركة.
+  void _hero(Canvas c, double x, double y, double t, bool faceRight) {
+    final bob = math.sin(t * 11) * 1.2;
+    c.save();
+    if (!faceRight) {
+      c.translate(x * 2 + 46, 0);
+      c.scale(-1, 1);
+    }
+
+    final outline = Paint()..color = const Color(0xFF17243D);
+    final hair = Paint()..color = const Color(0xFF20243A);
+    final hairLight = Paint()..color = const Color(0xFF48516F);
+    final skin = Paint()..color = const Color(0xFFFFD0AD);
+    final jacket = Paint()..color = const Color(0xFF2467C9);
+    final jacketShade = Paint()..color = const Color(0xFF16418A);
+    final red = Paint()..color = const Color(0xFFE94D61);
+    final gold = Paint()..color = const Color(0xFFFFD166);
+    final white = Paint()..color = const Color(0xFFF5F8FF);
+
+    c.drawOval(Rect.fromLTWH(x + 3, y + 45, 43, 8), Paint()..color = Colors.black26);
+
+    // وشاح أحمر متطاير خلف البطل.
+    final scarf = Path()
+      ..moveTo(x + 15, y + 19 + bob)
+      ..quadraticBezierTo(x - 1, y + 12 + bob, x - 7, y + 24 + bob)
+      ..lineTo(x + 5, y + 29 + bob)
+      ..lineTo(x - 2, y + 37 + bob)
+      ..quadraticBezierTo(x + 15, y + 34 + bob, x + 20, y + 27 + bob)
+      ..close();
+    c.drawPath(scarf, red);
+
+    // الساقان والحذاءان.
+    c.drawRRect(RRect.fromRectAndRadius(
+      Rect.fromLTWH(x + 13, y + 34 + bob, 10, 12), const Radius.circular(4)), jacketShade);
+    c.drawRRect(RRect.fromRectAndRadius(
+      Rect.fromLTWH(x + 27, y + 34 + bob, 10, 12), const Radius.circular(4)), jacket);
+    c.drawRRect(RRect.fromRectAndRadius(
+      Rect.fromLTWH(x + 8, y + 42 + bob, 17, 6), const Radius.circular(3)), outline);
+    c.drawRRect(RRect.fromRectAndRadius(
+      Rect.fromLTWH(x + 25, y + 42 + bob, 17, 6), const Radius.circular(3)), outline);
+
+    // الجذع والسترة.
+    c.drawRRect(RRect.fromRectAndRadius(
+      Rect.fromLTWH(x + 10, y + 19 + bob, 29, 22), const Radius.circular(8)), outline);
+    c.drawRRect(RRect.fromRectAndRadius(
+      Rect.fromLTWH(x + 12, y + 20 + bob, 25, 19), const Radius.circular(6)), jacket);
+    final collar = Path()
+      ..moveTo(x + 17, y + 19 + bob)
+      ..lineTo(x + 27, y + 29 + bob)
+      ..lineTo(x + 33, y + 19 + bob)
+      ..close();
+    c.drawPath(collar, white);
+    c.drawCircle(Offset(x + 31, y + 32 + bob), 2, gold);
+
+    // الذراع الأمامية وقبضة السيف.
+    c.drawRRect(RRect.fromRectAndRadius(
+      Rect.fromLTWH(x + 31, y + 23 + bob, 12, 7), const Radius.circular(4)), skin);
+
+    // نصل السيف المتجه إلى الأمام مع لمعان وحدّ واضح.
+    final blade = Path()
+      ..moveTo(x + 39, y + 23 + bob)
+      ..lineTo(x + 57, y + 4 + bob)
+      ..lineTo(x + 49, y + 29 + bob)
+      ..lineTo(x + 39, y + 27 + bob)
+      ..close();
+    c.drawPath(blade, outline);
+    final bladeInner = Path()
+      ..moveTo(x + 41, y + 22 + bob)
+      ..lineTo(x + 55, y + 7 + bob)
+      ..lineTo(x + 48, y + 26 + bob)
+      ..close();
+    c.drawPath(bladeInner, white);
+    c.drawLine(Offset(x + 37, y + 25 + bob), Offset(x + 47, y + 31 + bob),
+        Paint()..color = gold..strokeWidth = 3..strokeCap = StrokeCap.round);
+    c.drawLine(Offset(x + 39, y + 28 + bob), Offset(x + 34, y + 34 + bob),
+        Paint()..color = outline..strokeWidth = 4..strokeCap = StrokeCap.round);
+
+    // الرأس الجانبي: عين واحدة تنظر إلى الأمام، لا إلى اللاعب.
+    c.drawOval(Rect.fromLTWH(x + 17, y + 3 + bob, 23, 22), outline);
+    c.drawOval(Rect.fromLTWH(x + 19, y + 4 + bob, 19, 19), skin);
+    c.drawCircle(Offset(x + 39, y + 15 + bob), 3.2, skin);
+
+    // شعر أنمي مسنن للخلف والأعلى.
+    final spikes = Path()
+      ..moveTo(x + 17, y + 13 + bob)
+      ..lineTo(x + 9, y + 7 + bob)
+      ..lineTo(x + 19, y + 8 + bob)
+      ..lineTo(x + 16, y - 1 + bob)
+      ..lineTo(x + 26, y + 5 + bob)
+      ..lineTo(x + 31, y - 4 + bob)
+      ..lineTo(x + 34, y + 6 + bob)
+      ..lineTo(x + 43, y + 3 + bob)
+      ..lineTo(x + 39, y + 13 + bob)
+      ..lineTo(x + 29, y + 12 + bob)
+      ..close();
+    c.drawPath(spikes, hair);
+    c.drawLine(Offset(x + 18, y + 8 + bob), Offset(x + 29, y + 3 + bob),
+        Paint()..color = hairLight..strokeWidth = 2);
+    c.drawLine(Offset(x + 28, y + 7 + bob), Offset(x + 36, y + 5 + bob),
+        Paint()..color = const Color(0xFFE94D61)..strokeWidth = 2.5);
+
+    // عين جانبية كبيرة بأسلوب الأنمي.
+    c.drawOval(Rect.fromLTWH(x + 33, y + 13 + bob, 5, 7), white);
+    c.drawOval(Rect.fromLTWH(x + 35, y + 14 + bob, 2.5, 5), outline);
+    c.drawCircle(Offset(x + 36, y + 15 + bob), 1, white);
+    c.drawLine(Offset(x + 33, y + 12 + bob), Offset(x + 39, y + 11 + bob),
+        Paint()..color = outline..strokeWidth = 1.5);
+    c.drawLine(Offset(x + 35, y + 21 + bob), Offset(x + 39, y + 20 + bob),
+        Paint()..color = const Color(0xFFB75C68)..strokeWidth = 1);
+
+    // رباط الرأس.
+    c.drawLine(Offset(x + 17, y + 8 + bob), Offset(x + 39, y + 9 + bob),
+        Paint()..color = gold..strokeWidth = 2.2);
+
+    c.restore();
   }
 
   void _enemy(Canvas c, double x, double y, double t) {
