@@ -72,6 +72,23 @@ jobs:
           export ANDROID_HOME
           echo "ANDROID_HOME=$ANDROID_HOME"
           test -x "$ADB_PATH"
+          # Install Android SDK platforms and build-tools required by Godot 4.4.1.
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager 2>/dev/null | head -n 1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "Android SDK sdkmanager was not found under $ANDROID_HOME/cmdline-tools."
+            find "$ANDROID_HOME" -maxdepth 4 -type f | head -n 80
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;33.0.2" \
+            "build-tools;34.0.0"
+          test -d "$ANDROID_HOME/platforms/android-34"
+          test -d "$ANDROID_HOME/build-tools/33.0.2"
+          test -d "$ANDROID_HOME/build-tools/34.0.0"
+          echo "Android SDK platforms and build-tools are installed."
           # Install the exact Godot 4.4.1 export templates, including android_source.zip.
           # Use the same HOME Godot reports in its export-template diagnostics.
           export HOME=/github/home
