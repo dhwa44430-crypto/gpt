@@ -288,7 +288,108 @@ class AdventurePainter extends CustomPainter {
 
     final hero=invulnerable>0?'hero_hurt':(!onGround?'hero_jump':vx.abs()>35?(elapsed%0.24<0.12?'hero_run':'hero_run2'):'hero_idle');
     if(invulnerable<=0 || (elapsed*12).floor().isEven) {
-      _image(canvas,hero,Rect.fromLTWH(playerX-camera,playerY,gameHeroW,gameHeroH),flip:!facingRight);
+      _drawAnimeHero(canvas,Rect.fromLTWH(playerX-camera,playerY,gameHeroW,gameHeroH),hero,flip:!facingRight);
+    }
+    canvas.restore();
+  }
+
+
+  // Original human anime hero, drawn independently from the environment sprites.
+  void _drawAnimeHero(Canvas canvas,Rect dst,String pose,{bool flip=false}) {
+    canvas.save();
+    canvas.translate(dst.left,dst.top);
+    canvas.scale(dst.width/100,dst.height/120);
+    if(flip) {
+      canvas.translate(100,0);
+      canvas.scale(-1,1);
+    }
+    final outline=Paint()..color=const Color(0xff30202a);
+    final skin=Paint()..color=const Color(0xffffc58f);
+    final hair=Paint()..color=const Color(0xff48251d);
+    final hairLight=Paint()..color=const Color(0xff87452b);
+    final red=Paint()..color=const Color(0xffe7472f);
+    final redShade=Paint()..color=const Color(0xffa92e2a);
+    final scarf=Paint()..color=const Color(0xff08aeb5);
+    final scarfShade=Paint()..color=const Color(0xff087b88);
+    final shirt=Paint()..color=const Color(0xfffff0d5);
+    final pants=Paint()..color=const Color(0xff26354b);
+    final boot=Paint()..color=const Color(0xff754027);
+    final glove=Paint()..color=const Color(0xff543426);
+    final stroke=Paint()..color=const Color(0xff30202a)..style=PaintingStyle.stroke..strokeWidth=3.2..strokeJoin=StrokeJoin.round..strokeCap=StrokeCap.round;
+    final running=pose=='hero_run' || pose=='hero_run2';
+    final jumping=pose=='hero_jump';
+    final hurt=pose=='hero_hurt';
+    final swing=running ? (pose=='hero_run'?1.0:-1.0) : 0.0;
+    // Legs and sturdy adventure boots.
+    final legY=jumping?72.0: (running?76.0:78.0);
+    final leftLeg=Path()
+      ..moveTo(39,legY)..lineTo(34+(running?8*swing:0),98)
+      ..lineTo(25+(running?8*swing:0),104)..lineTo(43+(running?8*swing:0),108)
+      ..lineTo(52,legY+3)..close();
+    final rightLeg=Path()
+      ..moveTo(57,legY)..lineTo(65-(running?8*swing:0),96)
+      ..lineTo(75-(running?8*swing:0),101)..lineTo(91-(running?8*swing:0),105)
+      ..lineTo(88-(running?8*swing:0),111)..lineTo(68,108)..lineTo(51,84)..close();
+    canvas.drawPath(leftLeg,outline); canvas.drawPath(leftLeg,Paint()..color=const Color(0xff34445d));
+    canvas.drawPath(rightLeg,outline); canvas.drawPath(rightLeg,pants);
+    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(17+(running?8*swing:0),99,28,14),const Radius.circular(6)),outline);
+    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(17+(running?8*swing:0),100,26,11),const Radius.circular(5)),boot);
+    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(68-(running?8*swing:0),101,29,14),outline);
+    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(69-(running?8*swing:0),102,27,11),const Radius.circular(5)),boot);
+    // Torso, shirt and short red jacket.
+    final body=RRect.fromRectAndRadius(Rect.fromLTWH(27,48,48,38),const Radius.circular(13));
+    canvas.drawRRect(body,outline);
+    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(29,49,44,34),const Radius.circular(11)),red);
+    canvas.drawPath(Path()..moveTo(46,50)..lineTo(56,50)..lineTo(57,81)..lineTo(46,81)..close(),shirt);
+    canvas.drawLine(const Offset(51,53),const Offset(51,80),stroke);
+    canvas.drawCircle(const Offset(65,61),2.4,Paint()..color=const Color(0xffffd45c));
+    canvas.drawCircle(const Offset(65,72),2.4,Paint()..color=const Color(0xffffd45c));
+    // Arms swing with the run cycle.
+    final armA=Path()..moveTo(31,55)..quadraticBezierTo(18,62+(running?12*swing:0),18,75+(running?10*swing:0))..lineTo(27,79+(running?10*swing:0))..lineTo(39,64)..close();
+    final armB=Path()..moveTo(68,55)..quadraticBezierTo(82,61-(running?12*swing:0),83,73-(running?10*swing:0))..lineTo(74,80-(running?10*swing:0))..lineTo(61,65)..close();
+    canvas.drawPath(armA,outline); canvas.drawPath(armA,red);
+    canvas.drawPath(armB,outline); canvas.drawPath(armB,red);
+    canvas.drawCircle(Offset(22,76+(running?10*swing:0)),7,outline);
+    canvas.drawCircle(Offset(22,76+(running?10*swing:0)),5.5,glove);
+    canvas.drawCircle(Offset(80,74-(running?10*swing:0)),7,outline);
+    canvas.drawCircle(Offset(80,74-(running?10*swing:0)),5.5,glove);
+    // Neck and flowing teal scarf.
+    canvas.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(43,39,17,17),const Radius.circular(6)),skin);
+    final scarfTail=Path()..moveTo(38,46)..lineTo(7,38)..lineTo(18,53)..lineTo(34,55)..close();
+    canvas.drawPath(scarfTail,outline); canvas.drawPath(scarfTail,scarf);
+    canvas.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(35,42,34,13),const Radius.circular(7)),outline);
+    canvas.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(37,43,30,9),const Radius.circular(5)),scarf);
+    canvas.drawPath(Path()..moveTo(62,49)..lineTo(77,62)..lineTo(68,72)..lineTo(58,57)..close(),outline);
+    canvas.drawPath(Path()..moveTo(63,50)..lineTo(74,62)..lineTo(68,68)..lineTo(60,55)..close(),scarfShade);
+    // Large expressive anime face.
+    canvas.drawOval(const Rect.fromLTWH(30,9,43,43),outline);
+    canvas.drawOval(const Rect.fromLTWH(32,10,39,39),skin);
+    canvas.drawOval(const Rect.fromLTWH(38,25,10,14),outline);
+    canvas.drawOval(const Rect.fromLTWH(56,25,10,14),outline);
+    canvas.drawOval(const Rect.fromLTWH(40,27,6,10),Paint()..color=const Color(0xff6a351f));
+    canvas.drawOval(const Rect.fromLTWH(58,27,6,10),Paint()..color=const Color(0xff6a351f));
+    canvas.drawCircle(const Offset(43,29),2,Paint()..color=Colors.white);
+    canvas.drawCircle(const Offset(61,29),2,Paint()..color=Colors.white);
+    canvas.drawLine(const Offset(37,23),const Offset(48,21),stroke);
+    canvas.drawLine(const Offset(55,21),const Offset(67,23),stroke);
+    if(hurt) {
+      canvas.drawArc(const Rect.fromLTWH(47,37,12,7),0,math.pi, false,stroke);
+    } else {
+      canvas.drawArc(const Rect.fromLTWH(47,35,12,8),0,math.pi, false,stroke);
+    }
+    // Distinct spiky anime hair silhouette and highlights.
+    final hairShape=Path()..moveTo(31,29)..lineTo(24,20)..lineTo(34,21)
+      ..lineTo(29,9)..lineTo(43,17)..lineTo(47,3)..lineTo(54,16)
+      ..lineTo(66,6)..lineTo(63,20)..lineTo(78,16)..lineTo(70,29)
+      ..lineTo(68,35)..lineTo(63,24)..lineTo(55,20)..lineTo(46,22)
+      ..lineTo(37,20)..lineTo(32,34)..close();
+    canvas.drawPath(hairShape,outline);
+    canvas.drawPath(Path()..moveTo(30,20)..lineTo(40,21)..lineTo(34,12)..close(),hairLight);
+    canvas.drawPath(Path()..moveTo(43,17)..lineTo(49,5)..lineTo(53,18)..close(),hairLight);
+    canvas.drawPath(Path()..moveTo(57,18)..lineTo(66,9)..lineTo(63,21)..close(),hairLight);
+    if(hurt) {
+      canvas.drawLine(const Offset(80,8),const Offset(91,0),Paint()..color=const Color(0xffffd34e)..strokeWidth=4);
+      canvas.drawLine(const Offset(83,16),const Offset(98,16),Paint()..color=const Color(0xffffd34e)..strokeWidth=3);
     }
     canvas.restore();
   }
