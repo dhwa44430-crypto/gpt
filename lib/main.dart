@@ -145,31 +145,115 @@ class _CityScreenState extends State<CityScreen> {
   String price(Tool t)=>t==Tool.bulldoze?'مجاني':(t==Tool.select?'اختر':'\$'+prices[t].toString());
 
   @override
-  Widget build(BuildContext context)=>Scaffold(body:SafeArea(child:Row(children:[
-    SizedBox(width:205,child:Container(
-      decoration:const BoxDecoration(color:Color(0xFF172633),border:Border(right:BorderSide(color:Color(0xFF2D4655)))),
-      child:Column(children:[
-        const SizedBox(height:8),
-        const Row(mainAxisAlignment:MainAxisAlignment.center,children:[Icon(Icons.location_city,color:Color(0xFF54D6B0),size:27),SizedBox(width:7),Text('مدينتي',style:TextStyle(fontSize:22,fontWeight:FontWeight.w900))]),
-        const Padding(padding:EdgeInsets.symmetric(vertical:8),child:Text('لوحة البناء',style:TextStyle(color:Colors.white54,fontSize:12))),
-        Expanded(child:ListView(padding:const EdgeInsets.symmetric(horizontal:8),children:[
-          toolButton(Tool.select,Icons.touch_app,'تحديد'),toolButton(Tool.road,Icons.add_road,'الطرق'),
-          toolButton(Tool.home,Icons.house,'منازل'),toolButton(Tool.shop,Icons.storefront,'متاجر'),
-          toolButton(Tool.factory,Icons.factory,'مصانع'),toolButton(Tool.power,Icons.electric_bolt,'كهرباء'),
-          toolButton(Tool.park,Icons.park,'حدائق'),toolButton(Tool.bulldoze,Icons.delete_sweep,'إزالة'),
-        ])),
-        Padding(padding:const EdgeInsets.all(7),child:TextButton.icon(onPressed:resetCity,icon:const Icon(Icons.restart_alt,size:18),label:const Text('مدينة جديدة'))),
-      ]),
-    )),
-    Expanded(child:Column(children:[
-      topBar(),
-      Expanded(child:LayoutBuilder(builder:(context,box)=>Stack(fit:StackFit.expand,children:[
-        GestureDetector(behavior:HitTestBehavior.opaque,onTapDown:(d){final p=screenToTile(d.localPosition,box.biggest);place(p.$1,p.$2);},child:CustomPaint(painter:CityPainter(map:map),child:const SizedBox.expand())),
-        if(help) Positioned(left:10,right:10,bottom:8,child:IgnorePointer(child:Container(padding:const EdgeInsets.all(9),decoration:BoxDecoration(color:const Color(0xE8172633),borderRadius:BorderRadius.circular(12)),child:const Text('اختر نوع البناء من اليسار ثم اضغط على قطعة أرض بجانب الطريق.',textAlign:TextAlign.center,style:TextStyle(fontSize:12))))),
-      ]))),
-      bottomBar(),
-    ]))),
-  ])));
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Row(
+          children: [
+            SizedBox(
+              width: 205,
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Color(0xFF172633),
+                  border: Border(right: BorderSide(color: Color(0xFF2D4655))),
+                ),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 8),
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.location_city, color: Color(0xFF54D6B0), size: 27),
+                        SizedBox(width: 7),
+                        Text('مدينتي', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+                      ],
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Text('لوحة البناء', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    ),
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        children: [
+                          toolButton(Tool.select, Icons.touch_app, 'تحديد'),
+                          toolButton(Tool.road, Icons.add_road, 'الطرق'),
+                          toolButton(Tool.home, Icons.house, 'منازل'),
+                          toolButton(Tool.shop, Icons.storefront, 'متاجر'),
+                          toolButton(Tool.factory, Icons.factory, 'مصانع'),
+                          toolButton(Tool.power, Icons.electric_bolt, 'كهرباء'),
+                          toolButton(Tool.park, Icons.park, 'حدائق'),
+                          toolButton(Tool.bulldoze, Icons.delete_sweep, 'إزالة'),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(7),
+                      child: TextButton.icon(
+                        onPressed: resetCity,
+                        icon: const Icon(Icons.restart_alt, size: 18),
+                        label: const Text('مدينة جديدة'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(
+              child: Column(
+                children: [
+                  topBar(),
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, box) {
+                        return Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTapDown: (d) {
+                                final p = screenToTile(d.localPosition, box.biggest);
+                                place(p.$1, p.$2);
+                              },
+                              child: CustomPaint(
+                                painter: CityPainter(map: map),
+                                child: const SizedBox.expand(),
+                              ),
+                            ),
+                            if (help)
+                              Positioned(
+                                left: 10,
+                                right: 10,
+                                bottom: 8,
+                                child: IgnorePointer(
+                                  child: Container(
+                                    padding: const EdgeInsets.all(9),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xE8172633),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Text(
+                                      'اختر نوع البناء من اليسار ثم اضغط على قطعة أرض بجانب الطريق.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                  bottomBar(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget toolButton(Tool t,IconData icon,String label) {
     final selected=tool==t, color=toolColor(t);
