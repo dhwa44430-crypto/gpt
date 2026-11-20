@@ -78,7 +78,7 @@ class _AdventureScreenState extends State<AdventureScreen> {
               right: 24,
               bottom: 18,
               child: _control(Icons.arrow_upward_rounded, large: true,
-                  onDown: game.pressJump, onUp: () => game.jumpHeld = false),
+                  onDown: game.pressJump, onUp: () {}),
             ),
             ValueListenableBuilder<bool>(
               valueListenable: game.finished,
@@ -175,7 +175,7 @@ class AdventureGame extends FlameGame {
 
   double playerX = 90, playerY = groundY - heroH, velocityX = 0, velocityY = 0;
   double cameraX = 0, animationClock = 0, invulnerable = 0;
-  bool left = false, right = false, jumpHeld = false, onGround = true, facingRight = true;
+  bool left = false, right = false, onGround = true, facingRight = true;
 
   final List<String> assetNames = const [
     'hero_idle','hero_run','hero_run2','hero_jump','hero_hurt','hero_crouch',
@@ -214,10 +214,10 @@ class AdventureGame extends FlameGame {
     platforms.add(const _Platform(3700, 290, 180, 70, 'platform_stone'));
 
     for (final x in [210.0, 390, 445, 650, 700, 910, 1080, 1130, 1320, 1510, 1710, 1770, 1940, 2010, 2250, 2430, 2630, 2820, 3050, 3120, 3290, 3550, 3790, 3890, 4050]) {
-      pickups.add(_Coin(x, x % 2 == 0 ? 300 : 325));
+      pickups.add(_Coin(x.toDouble(), x % 2 == 0 ? 300.0 : 325.0));
     }
     for (final x in [900.0, 1510, 2260, 2860, 3570]) {
-      enemies.add(_Enemy(x, groundY - 68, x - 100, x + 110, 'enemy_slime'));
+      enemies.add(_Enemy(x.toDouble(), groundY - 68, x.toDouble() - 100, x.toDouble() + 110, 'enemy_slime'));
     }
     enemies.add(_Enemy(1860, 215 - 72, 1650, 2050, 'enemy_spike'));
     enemies.add(_Enemy(3190, 210 - 78, 3000, 3400, 'enemy_butterfly'));
@@ -229,14 +229,14 @@ class AdventureGame extends FlameGame {
       velocityY = -760;
       onGround = false;
     }
-    jumpHeld = true;
+    
   }
 
   @override
   void update(double dt) {
     super.update(dt);
     if (gameOver.value || finished.value || art.isEmpty) return;
-    final step = dt.clamp(0.0, 0.04);
+    final step = dt.clamp(0.0, 0.04).toDouble();
     animationClock += step;
     if (invulnerable > 0) invulnerable -= step;
 
@@ -299,7 +299,7 @@ class AdventureGame extends FlameGame {
     if (lives.value <= 0) {
       gameOver.value = true;
     } else {
-      playerX = math.max(0, playerX - 130);
+      playerX = math.max(0.0, playerX - 130).toDouble();
       playerY = groundY - heroH;
     }
   }
@@ -312,7 +312,7 @@ class AdventureGame extends FlameGame {
     cameraX = 0;
     invulnerable = 0;
     onGround = true;
-    left = right = jumpHeld = false;
+    left = right = false;
     coins.value = 0;
     lives.value = 3;
     finished.value = false;
@@ -333,7 +333,7 @@ class AdventureGame extends FlameGame {
       _draw(canvas, 'cloud', Rect.fromLTWH(i * 520.0, 30 + (i % 3) * 30.0, 170, 105), cameraX * 0.28);
     }
     for (final x in [120.0, 520, 950, 1450, 2050, 2480, 2950, 3420, 3950]) {
-      _draw(canvas, x % 2 == 0 ? 'tree' : 'pine', Rect.fromLTWH(x, groundY - 175, 150, 180), cameraX);
+      _draw(canvas, x % 2 == 0 ? 'tree' : 'pine', Rect.fromLTWH(x.toDouble(), groundY - 175, 150, 180), cameraX);
     }
     for (final p in platforms) {
       final tileWidth = 180.0;
@@ -343,8 +343,8 @@ class AdventureGame extends FlameGame {
       }
     }
     for (final x in [760.0, 1340, 2090, 2670, 3420]) {
-      _draw(canvas, 'rock', Rect.fromLTWH(x, groundY - 58, 55, 58), cameraX);
-      _draw(canvas, 'bush', Rect.fromLTWH(x + 90, groundY - 82, 100, 82), cameraX);
+      _draw(canvas, 'rock', Rect.fromLTWH(x.toDouble(), groundY - 58, 55, 58), cameraX);
+      _draw(canvas, 'bush', Rect.fromLTWH(x.toDouble() + 90, groundY - 82, 100, 82), cameraX);
     }
     for (final coin in pickups) {
       if (!coin.taken) _draw(canvas, 'coin', Rect.fromLTWH(coin.x, coin.y, 42, 48), cameraX);
