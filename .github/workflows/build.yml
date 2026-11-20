@@ -148,14 +148,32 @@ jobs:
       - name: Export Android APK
         run: |
           export HOME=/github/home
+          export XDG_CONFIG_HOME="$HOME/.config"
+          export XDG_DATA_HOME="$HOME/.local/share"
           export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
           export PATH="$JAVA_HOME/bin:$PATH"
           ADB_PATH="$(find / -type f -path '*/platform-tools/adb' 2>/dev/null | head -n 1)"
           export ANDROID_HOME="$(dirname "$(dirname "$ADB_PATH")")"
+          # Recreate Godot editor settings in the exact XDG config directory used by this process.
+          mkdir -p "$XDG_CONFIG_HOME/godot"
+          cat > "$XDG_CONFIG_HOME/godot/editor_settings-4.tres" <<EOF
+          [gd_resource type="EditorSettings" format=3]
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          EOF
+          echo "===== Godot Android editor settings ====="
+          cat "$XDG_CONFIG_HOME/godot/editor_settings-4.tres"
+          test -x "$JAVA_HOME/bin/java"
+          test -x "$ANDROID_HOME/platform-tools/adb"
+          test -d "$ANDROID_HOME/platforms/android-34"
+          test -d "$ANDROID_HOME/build-tools/34.0.0"
+          test -s "$XDG_DATA_HOME/godot/export_templates/4.4.1.stable/android_source.zip"
           export GODOT_ANDROID_KEYSTORE_DEBUG_PATH="$HOME/.android/debug.keystore"
           export GODOT_ANDROID_KEYSTORE_DEBUG_USER="androiddebugkey"
           export GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD="android"
           mkdir -p build
+          godot --headless --editor --path . --quit --verbose
           godot --headless --path . --export-debug "Android" build/HospitalSimulator.apk
       - uses: actions/upload-artifact@v4
         with:
