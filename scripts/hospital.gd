@@ -25,6 +25,13 @@ func _ready() -> void:
 	_spawn_staff()
 	_update_hud()
 
+func _process(delta: float) -> void:
+	for i in range(staff_nodes.size()):
+		var staff := staff_nodes[i]
+		staff.position.z += delta * (0.35 + float(i % 2) * 0.12)
+		if staff.position.z > 4.0:
+			staff.position.z = -2.0
+
 func _mat(color: Color, roughness := 0.85) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
@@ -83,11 +90,11 @@ func _add_character(file_name: String, character_position: Vector3, character_sc
 
 func _spawn_staff() -> void:
 	for i in range(nurses):
-		var nurse := _add_character("nurse.glb", Vector3(-4.0 + float(i) * 1.3, 0.0, -1.0), 1.0, "idle")
+		var nurse := _add_character("nurse.glb", Vector3(-4.0 + float(i) * 1.3, 0.0, -1.0), 1.0, "walk")
 		if nurse != null:
 			nurse.name = "Nurse_%d" % i
 			staff_nodes.append(nurse)
-	var doctor := _add_character("doctor.glb", Vector3(5.0, 0.0, -0.5), 1.0, "idle")
+	var doctor := _add_character("doctor.glb", Vector3(5.0, 0.0, -0.5), 1.0, "walk")
 	if doctor != null:
 		doctor.name = "Doctor"
 		staff_nodes.append(doctor)
@@ -258,7 +265,7 @@ func _hire_nurse() -> void:
 		return
 	money -= 800
 	nurses += 1
-	var nurse := _add_character("nurse.glb", Vector3(-4.0 + float(nurses - 1) * 1.3, 0.0, -1.0), 1.0, "idle")
+	var nurse := _add_character("nurse.glb", Vector3(-4.0 + float(nurses - 1) * 1.3, 0.0, -1.0), 1.0, "walk")
 	if nurse != null:
 		nurse.name = "Nurse_%d" % nurses
 		staff_nodes.append(nurse)
