@@ -1,33 +1,19 @@
 config_version=5
 
 [application]
-config/name="Anime Platform Adventure"
+config/name="Arrow Escape Puzzle"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.4", "GL Compatibility")
-config/description="A colorful anime platform adventure"
+config/description="A satisfying arrow path puzzle for Android"
 
 [display]
-window/size/viewport_width=1280
-window/size/viewport_height=720
+window/size/viewport_width=480
+window/size/viewport_height=960
 window/handheld/orientation=1
 window/stretch/mode="canvas_items"
-
-[input]
-move_left={
-"deadzone": 0.2,
-"events": [Object(InputEventKey,"physical_keycode":65), Object(InputEventKey,"physical_keycode":4194311)]
-}
-move_right={
-"deadzone": 0.2,
-"events": [Object(InputEventKey,"physical_keycode":68), Object(InputEventKey,"physical_keycode":4194313)]
-}
-jump={
-"deadzone": 0.2,
-"events": [Object(InputEventKey,"physical_keycode":32), Object(InputEventKey,"physical_keycode":4194309)]
-}
 
 [rendering]
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true
-environment/defaults/default_clear_color=Color(0.42, 0.78, 0.96, 1)
+environment/defaults/default_clear_color=Color(0.06, 0.09, 0.15, 1)
