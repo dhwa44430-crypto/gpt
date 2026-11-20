@@ -70,16 +70,16 @@ func _physics_process(delta: float) -> void:
     _update_hud()
 
 func _draw() -> void:
-    var sky := LEVEL_COLORS[level_index]
-    draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), sky)
-    var w := get_viewport_rect().size.x
-    for i in range(-1, 5):
-        var x := float(i) * 675.0 - fmod(camera.position.x * 0.22, 675.0)
-        var bg_row := level_index
-        _atlas_piece(2, bg_row, Rect2(x, 0, 675, 450))
-        _atlas_piece(3, 0, Rect2(x + 275, 275, 112, 150))
-        _atlas_piece(2, 3, Rect2(x + 35, 355, 95, 65))
-    draw_rect(Rect2(0, get_viewport_rect().size.y - 18, w, 18), Color("#182a38"))
+    var view_size := get_viewport_rect().size
+    var center := camera.global_position if camera != null else Vector2.ZERO
+    var view_origin := center - view_size * 0.5
+    draw_rect(Rect2(view_origin, view_size), LEVEL_COLORS[level_index])
+    var first_x := floori((view_origin.x * 0.22) / 675.0) - 1
+    for i in range(first_x, first_x + 5):
+        var x := float(i) * 675.0 - center.x * 0.22
+        _atlas_piece(2, level_index, Rect2(x + center.x - view_size.x * 0.5, view_origin.y, 675, 450))
+        _atlas_piece(3, 0, Rect2(x + center.x - view_size.x * 0.5 + 275, view_origin.y + 275, 112, 150))
+    draw_rect(Rect2(view_origin.x, view_origin.y + view_size.y - 18, view_size.x, 18), Color("#182a38"))
 
 func _atlas_piece(col: int, row: int, destination: Rect2) -> void:
     if WORLD_TEXTURE == null:
@@ -115,6 +115,16 @@ func _add_platform(x: float, end_x: float, y: float) -> void:
     shape.shape = rect
     body.add_child(shape)
     var sprite := Sprite2D.new()
+    var fallback := ColorRect.new()
+    fallback.position = Vector2(-width / 2.0, 0)
+    fallback.size = Vector2(width, 56)
+    fallback.color = Color("#4b9b42")
+    body.add_child(fallback)
+    var top_edge := ColorRect.new()
+    top_edge.position = Vector2(-width / 2.0, -5)
+    top_edge.size = Vector2(width, 10)
+    top_edge.color = Color("#9be36b")
+    body.add_child(top_edge)
     sprite.texture = WORLD_TEXTURE
     sprite.region_enabled = true
     sprite.region_rect = Rect2(0, float(level_index) * 22.5, 40, 22.5)
@@ -128,6 +138,10 @@ func _add_coins() -> void:
         var coin := Area2D.new()
         coin.position = pos
         coin.add_to_group("coins")
+        var coin_fallback := Polygon2D.new()
+        coin_fallback.polygon = PackedVector2Array([Vector2(0, -18), Vector2(13, -9), Vector2(13, 9), Vector2(0, 18), Vector2(-13, 9), Vector2(-13, -9)])
+        coin_fallback.color = Color("#ffd83d")
+        coin.add_child(coin_fallback)
         var sprite := Sprite2D.new()
         sprite.texture = WORLD_TEXTURE
         sprite.region_enabled = true
@@ -150,6 +164,10 @@ func _add_enemies() -> void:
         enemy.position = pos
         enemy.set_meta("origin_x", pos.x)
         enemy.set_meta("phase", randf() * TAU)
+        var enemy_fallback := Polygon2D.new()
+        enemy_fallback.polygon = PackedVector2Array([Vector2(-22, 13), Vector2(-18, -8), Vector2(-7, -17), Vector2(8, -17), Vector2(20, -7), Vector2(23, 13)])
+        enemy_fallback.color = Color("#c64b35")
+        enemy.add_child(enemy_fallback)
         var sprite := Sprite2D.new()
         sprite.texture = WORLD_TEXTURE
         sprite.region_enabled = true
@@ -173,6 +191,16 @@ func _add_goal() -> void:
     goal.position = Vector2(LEVEL_LENGTHS[level_index] - 70, 330)
     goal.scale = Vector2(1.9, 5.2)
     world_root.add_child(goal)
+    var pole := ColorRect.new()
+    pole.position = goal.position + Vector2(-3, -110)
+    pole.size = Vector2(6, 220)
+    pole.color = Color("#f4f4f4")
+    world_root.add_child(pole)
+    var flag := Polygon2D.new()
+    flag.position = pole.position + Vector2(3, 0)
+    flag.polygon = PackedVector2Array([Vector2.ZERO, Vector2(62, 18), Vector2.ZERO, Vector2(0, 38)])
+    flag.color = Color("#ffdf45")
+    world_root.add_child(flag)
 
 func _make_player() -> void:
     player = CharacterBody2D.new()
@@ -184,6 +212,14 @@ func _make_player() -> void:
     capsule.height = 52
     collision.shape = capsule
     player.add_child(collision)
+    var hero_fallback := Polygon2D.new()
+    hero_fallback.polygon = PackedVector2Array([Vector2(-12, 25), Vector2(-15, 5), Vector2(-11, -12), Vector2(-8, -25), Vector2(8, -25), Vector2(12, -12), Vector2(15, 5), Vector2(12, 25)])
+    hero_fallback.color = Color("#f2c49b")
+    player.add_child(hero_fallback)
+    var hair := Polygon2D.new()
+    hair.polygon = PackedVector2Array([Vector2(-13, -13), Vector2(-11, -29), Vector2(0, -36), Vector2(13, -25), Vector2(12, -11), Vector2(4, -20), Vector2(-5, -18)])
+    hair.color = Color("#25304c")
+    player.add_child(hair)
     hero_sprite = Sprite2D.new()
     hero_sprite.texture = HERO_TEXTURE
     hero_sprite.hframes = 3
@@ -192,6 +228,7 @@ func _make_player() -> void:
     player.add_child(hero_sprite)
     add_child(player)
     camera = Camera2D.new()
+    camera.position = Vector2.ZERO
     camera.position_smoothing_enabled = true
     camera.position_smoothing_speed = 7.0
     camera.limit_left = 0
@@ -322,7 +359,8 @@ func _animate_hero() -> void:
 
 func _update_camera() -> void:
     if camera:
-        camera.position.x = clampf(player.position.x, 500.0, LEVEL_LENGTHS[level_index] - 500.0)
+        camera.limit_right = int(LEVEL_LENGTHS[level_index])
+        camera.position = Vector2.ZERO
 
 func _check_goal() -> void:
     if player.position.x >= LEVEL_LENGTHS[level_index] - 100.0:
