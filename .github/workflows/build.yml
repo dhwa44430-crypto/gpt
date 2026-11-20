@@ -16,7 +16,8 @@ jobs:
       - name: Install download tools
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends curl ca-certificates
+          apt-get install -y --no-install-recommends curl ca-certificates nodejs npm
+          npm install --global @gltf-transform/cli@4.2.1
       - name: Download real CC0 hospital and people models
         run: |
           mkdir -p assets/models
@@ -29,6 +30,11 @@ jobs:
           curl -fL --retry 3 https://tevy.dev/models/cyclist/v1/lod1.glb -o assets/models/patient_female.glb
           curl -fL --retry 3 https://tevy.dev/models/hiker/v1/lod1.glb -o assets/models/nurse.glb
           curl -fL --retry 3 https://tevy.dev/models/road-worker/v1/lod1.glb -o assets/models/doctor.glb
+          # Decode Meshopt-compressed GLB geometry for Godot glTF import.
+          for model in assets/models/*.glb; do
+            gltf-transform optimize "$model" "\${model%.glb}-godot.glb" --compress false --texture-compress false --flatten false --join false --prune false --resample false
+            mv "\${model%.glb}-godot.glb" "$model"
+          done
           cat > assets/models/ASSET_LICENSES.txt <<'EOF'
           Hospital Ward, Operating Theatre, Hospital Corridor Straight, Ambulance, Hospital Building,
           Casual Walker, Cyclist, Hiker and Road Worker.
