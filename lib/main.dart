@@ -1,652 +1,272 @@
+import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SystemChrome.setPreferredOrientations(const [
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
-  ]);
-  runApp(const HeroQuestApp());
+  await SystemChrome.setPreferredOrientations(const [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  runApp(const CityBuilderApp());
 }
 
-class HeroQuestApp extends StatelessWidget {
-  const HeroQuestApp({super.key});
-
+class CityBuilderApp extends StatelessWidget {
+  const CityBuilderApp({super.key});
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'مغامرات البطل',
-      theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF101827),
-      ),
-      home: const GameScreen(),
-    );
-  }
+  Widget build(BuildContext context) => MaterialApp(
+    debugShowCheckedModeBanner: false, title: 'مدينتي',
+    theme: ThemeData(brightness: Brightness.dark, scaffoldBackgroundColor: const Color(0xFF101B25), colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF36C7A0), brightness: Brightness.dark), useMaterial3: true),
+    home: const CityScreen(),
+  );
 }
 
-class GameScreen extends StatefulWidget {
-  const GameScreen({super.key});
+enum Tool { select, road, home, shop, factory, power, park, bulldoze }
+class Tile {
+  Tile({this.kind = Tool.select, this.level = 0});
+  Tool kind;
+  int level;
+}
 
+class CityScreen extends StatefulWidget {
+  const CityScreen({super.key});
   @override
-  State<GameScreen> createState() => _GameScreenState();
+  State<CityScreen> createState() => _CityScreenState();
 }
 
-class _GameScreenState extends State<GameScreen>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ticker;
-  final Stopwatch _clock = Stopwatch();
-  final Set<String> _held = <String>{};
-  final List<LevelData> _levels = LevelData.all;
-  int _levelIndex = 0;
-  int _coins = 0;
-  int _lives = 3;
-  double _playerX = 90;
-  double _playerY = 390;
-  double _velocityX = 0;
-  double _velocityY = 0;
-  double _cameraX = 0;
-  double _previousTime = 0;
-  bool _grounded = false;
-  bool _started = false;
-  bool _won = false;
-  bool _lost = false;
-  bool _jumpQueued = false;
-  final Set<int> _collected = <int>{};
-  final Set<int> _defeated = <int>{};
-  ui.Image? _heroAtlas;
-  ui.Image? _worldAtlas;
-
-  Future<void> _loadHeroAtlas() async {
-    final data = await DefaultAssetBundle.of(context).load('assets/images/hero/hero_spritesheet.webp');
-    final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
-    final frame = await codec.getNextFrame();
-    if (!mounted) { frame.image.dispose(); return; }
-    setState(() => _heroAtlas = frame.image);
-  }
-
-  Future<void> _loadWorldAtlas() async {
-    final data = await DefaultAssetBundle.of(context).load('assets/images/world/world_atlas.webp');
-    final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
-    final frame = await codec.getNextFrame();
-    if (!mounted) { frame.image.dispose(); return; }
-    setState(() => _worldAtlas = frame.image);
-  }
-
-  LevelData get _level => _levels[_levelIndex];
+class _CityScreenState extends State<CityScreen> {
+  static const n = 18;
+  late final List<List<Tile>> map;
+  late final Timer timer;
+  Tool tool = Tool.home;
+  int money = 18000, population = 12, jobs = 8, happiness = 76, day = 1, growth = 0, roads = 28, buildings = 5;
+  String message = 'اختر البناء ثم اضغط على أرض المدينة';
+  bool help = true;
+  final prices = const {Tool.road:45, Tool.home:130, Tool.shop:210, Tool.factory:190, Tool.power:650, Tool.park:160, Tool.bulldoze:0, Tool.select:0};
 
   @override
   void initState() {
     super.initState();
-    _ticker = AnimationController(
-      vsync: this,
-      duration: const Duration(days: 1),
-    )..addListener(_tick);
-    _ticker.repeat();
-    _clock.start();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadHeroAtlas();
-      _loadWorldAtlas();
-    });
+    map = List.generate(n, (_) => List.generate(n, (_) => Tile()));
+    for (int c=1;c<17;c++) { map[9][c].kind=Tool.road; }
+    for (int r=3;r<15;r++) { if(r!=9) map[r][9].kind=Tool.road; }
+    map[8][8] = Tile(kind:Tool.power,level:1);
+    map[8][7] = Tile(kind:Tool.home,level:2);
+    map[8][10] = Tile(kind:Tool.shop,level:1);
+    map[10][8] = Tile(kind:Tool.home,level:1);
+    map[10][10] = Tile(kind:Tool.park,level:1);
+    timer = Timer.periodic(const Duration(seconds:3), (_) => simulate());
   }
 
   @override
-  void dispose() {
-    _heroAtlas?.dispose();
-    _worldAtlas?.dispose();
-    _ticker.dispose();
-    _clock.stop();
-    super.dispose();
+  void dispose() { timer.cancel(); super.dispose(); }
+
+  String nameOf(Tool t) {
+    switch(t) {
+      case Tool.road: return 'طريق';
+      case Tool.home: return 'منطقة سكنية';
+      case Tool.shop: return 'منطقة تجارية';
+      case Tool.factory: return 'منطقة صناعية';
+      case Tool.power: return 'محطة كهرباء';
+      case Tool.park: return 'حديقة';
+      case Tool.bulldoze: return 'إزالة';
+      case Tool.select: return 'تحديد';
+    }
+  }
+  bool get powered => map.expand((r)=>r).any((t)=>t.kind==Tool.power);
+  bool hasRoad(int r,int c) {
+    for(final d in const [[0,1],[0,-1],[1,0],[-1,0]]) {
+      final y=r+d[0], x=c+d[1];
+      if(y>=0&&y<n&&x>=0&&x<n&&map[y][x].kind==Tool.road) return true;
+    }
+    return false;
   }
 
-  void _start() {
-    setState(() {
-      _started = true;
-      _won = false;
-      _lost = false;
-    });
-    _previousTime = _clock.elapsedMicroseconds / 1000000;
-  }
-
-  void _resetLevel() {
-    _playerX = 90;
-    _playerY = 390;
-    _velocityX = 0;
-    _velocityY = 0;
-    _cameraX = 0;
-    _grounded = false;
-    _collected.clear();
-    _defeated.clear();
-    _jumpQueued = false;
-  }
-
-  void _restart() {
-    setState(() {
-      _levelIndex = 0;
-      _coins = 0;
-      _lives = 3;
-      _resetLevel();
-      _started = true;
-      _won = false;
-      _lost = false;
-    });
-  }
-
-  void _tick() {
-    final now = _clock.elapsedMicroseconds / 1000000;
-    var dt = now - _previousTime;
-    _previousTime = now;
-    dt = dt.clamp(0.0, 0.035).toDouble();
-    if (!_started || _won || _lost || dt <= 0) return;
-
-    final direction = (_held.contains('right') ? 1.0 : 0.0) -
-        (_held.contains('left') ? 1.0 : 0.0);
-    _velocityX = direction * 220;
-    _playerX += _velocityX * dt;
-
-    if (_jumpQueued && _grounded) {
-      _velocityY = -475;
-      _grounded = false;
-    }
-    _jumpQueued = false;
-    _velocityY += 1050 * dt;
-    final previousPlayerY = _playerY;
-    _playerY += _velocityY * dt;
-
-    _playerX = _playerX.clamp(0.0, _level.length - 45).toDouble();
-    _grounded = false;
-
-    // أرضية العالم والمنصات، مع ترك الحفر مفتوحة.
-    for (final platform in _level.platforms) {
-      final overlaps = _playerX + 30 > platform.x &&
-          _playerX + 10 < platform.x + platform.width;
-      final wasAbove = previousPlayerY <= platform.y + 1;
-      if (overlaps && _velocityY >= 0 && wasAbove &&
-          _playerY >= platform.y && _playerY <= platform.y + 28) {
-        _playerY = platform.y;
-        _velocityY = 0;
-        _grounded = true;
-      }
-    }
-
-    for (var i = 0; i < _level.coins.length; i++) {
-      if (_collected.contains(i)) continue;
-      final coin = _level.coins[i];
-      if ((_playerX + 20 - coin.dx).abs() < 28 &&
-          (_playerY - 40 - coin.dy).abs() < 42) {
-        _collected.add(i);
-        _coins++;
-      }
-    }
-
-    for (var i = 0; i < _level.enemies.length; i++) {
-      if (_defeated.contains(i)) continue;
-      final enemy = _level.enemies[i];
-      final ex = enemy.x + math.sin(now * 1.7 + i) * enemy.range;
-      final near = (_playerX + 20 - ex).abs() < 34 &&
-          (_playerY - 25 - enemy.y).abs() < 42;
-      if (near && _velocityY > 80 && previousPlayerY < enemy.y + 18) {
-        _defeated.add(i);
-        _velocityY = -270;
-      } else if (near) {
-        _hurt();
-      }
-    }
-
-    if (_playerY > 510) _hurt();
-    if (_playerX >= _level.length - 100) {
-      if (_levelIndex < _levels.length - 1) {
-        setState(() {
-          _levelIndex++;
-          _resetLevel();
-        });
-      } else {
-        setState(() => _won = true);
-      }
-    }
-
-    final screenWorldWidth = (MediaQuery.maybeOf(context)?.size.width ?? 800) *
-        450 / (MediaQuery.maybeOf(context)?.size.height ?? 450);
-    _cameraX = (_playerX - screenWorldWidth * 0.38)
-        .clamp(0.0, math.max(0.0, _level.length - screenWorldWidth)).toDouble();
-    if (mounted) setState(() {});
-  }
-
-  void _hurt() {
-    _lives--;
-    if (_lives <= 0) {
+  void place(int r,int c) {
+    if(r<0||r>=n||c<0||c>=n) return;
+    final t=map[r][c];
+    if(tool==Tool.select) { setState(()=>message=t.kind==Tool.select?'أرض فارغة':nameOf(t.kind)+' • المستوى '+t.level.toString()); return; }
+    if(tool==Tool.bulldoze) {
+      if(t.kind==Tool.select) { setState(()=>message='لا يوجد شيء لإزالته هنا'); return; }
       setState(() {
-        _lost = true;
-        _started = false;
+        if(t.kind==Tool.road) roads--; else buildings--;
+        if(t.kind==Tool.home) population=math.max(0,population-4);
+        if(t.kind==Tool.shop||t.kind==Tool.factory) jobs=math.max(0,jobs-3);
+        t.kind=Tool.select; t.level=0; message='تمت إزالة البناء';
       });
-    } else {
-      _playerX = math.max(40.0, _playerX - 100).toDouble();
-      _playerY = 390;
-      _velocityY = 0;
-      _velocityX = 0;
+      return;
     }
+    if(t.kind!=Tool.select) { setState(()=>message='هذه القطعة مشغولة، أزل البناء أولاً'); return; }
+    if(tool!=Tool.road&&!hasRoad(r,c)) { setState(()=>message='يجب أن يكون المبنى بجانب طريق'); return; }
+    if(tool==Tool.power&&powered) { setState(()=>message='لديك محطة كهرباء بالفعل'); return; }
+    final cost=prices[tool]!;
+    if(money<cost) { setState(()=>message='الأموال غير كافية! تحتاج إلى \$'+cost.toString()); return; }
+    setState(() {
+      money-=cost; t.kind=tool; t.level=tool==Tool.road?0:1;
+      if(tool==Tool.road) roads++; else buildings++;
+      message='تم إنشاء '+nameOf(tool)+' بنجاح'; help=false;
+    });
   }
 
-  void _press(String key) {
-    if (!_started) return;
-    _held.add(key);
-    if (key == 'jump') _jumpQueued = true;
-  }
-
-  void _release(String key) => _held.remove(key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: LayoutBuilder(builder: (context, constraints) {
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            AnimatedBuilder(
-              animation: _ticker,
-              builder: (context, _) => CustomPaint(
-                painter: GamePainter(
-                  level: _level,
-                  playerX: _playerX,
-                  playerY: _playerY,
-                  cameraX: _cameraX,
-                  coins: _collected,
-                  defeated: _defeated,
-                  time: _clock.elapsedMilliseconds / 1000,
-                  facingRight: _velocityX >= 0,
-                  heroAtlas: _heroAtlas,
-                  worldAtlas: _worldAtlas,
-                  heroFrame: !_grounded
-                      ? (_velocityY < 0 ? 4 : 5)
-                      : (_held.contains('right') || _held.contains('left')
-                          ? 1 + ((_clock.elapsedMilliseconds ~/ 150) % 3)
-                          : 0),
-                ),
-              ),
-            ),
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _hud('المرحلة ${_levelIndex + 1}', Icons.flag_rounded),
-                    const SizedBox(width: 8),
-                    _hud('$_coins', Icons.monetization_on_rounded),
-                    const Spacer(),
-                    _hud('♥ $_lives', Icons.favorite_rounded),
-                  ],
-                ),
-              ),
-            ),
-            if (_started && !_won && !_lost)
-              Positioned(
-                left: 18,
-                bottom: 22,
-                child: Row(
-                  children: [
-                    _control(Icons.arrow_back_rounded, 'left'),
-                    const SizedBox(width: 12),
-                    _control(Icons.arrow_forward_rounded, 'right'),
-                  ],
-                ),
-              ),
-            if (_started && !_won && !_lost)
-              Positioned(
-                right: 24,
-                bottom: 24,
-                child: _control(Icons.arrow_upward_rounded, 'jump', large: true),
-              ),
-            if (!_started || _won || _lost)
-              Container(
-                color: const Color(0xB9000000),
-                alignment: Alignment.center,
-                child: Container(
-                  constraints: const BoxConstraints(maxWidth: 360),
-                  margin: const EdgeInsets.all(24),
-                  padding: const EdgeInsets.all(26),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF17243A),
-                    borderRadius: BorderRadius.circular(26),
-                    border: Border.all(color: const Color(0xFFFFC857), width: 2),
-                    boxShadow: const [
-                      BoxShadow(color: Colors.black54, blurRadius: 24, offset: Offset(0, 12))
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('⚔️', style: TextStyle(fontSize: 54)),
-                      const SizedBox(height: 8),
-                      Text(
-                        _won ? 'أحسنت يا بطل!' : _lost ? 'انتهت المحاولة' : 'مغامرات البطل',
-                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Color(0xFFFFD166)),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        _won
-                            ? 'أنهيت المراحل الثلاث وجمعت $_coins عملة!'
-                            : _lost
-                                ? 'لا تستسلم! حاول من جديد.'
-                                : 'اجمع العملات، اقفز فوق الأعداء، واعبر المراحل!',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 16, height: 1.6, color: Colors.white70),
-                      ),
-                      const SizedBox(height: 22),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _won || _lost ? _restart : _start,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFFFC857),
-                            foregroundColor: const Color(0xFF182238),
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          ),
-                          child: Text(_won || _lost ? 'العب من جديد' : 'ابدأ المغامرة',
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-          ],
-        );
-      }),
-    );
-  }
-
-  Widget _hud(String text, IconData icon) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(
-          color: const Color(0xD9162438),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white24),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 18, color: const Color(0xFFFFD166)),
-          const SizedBox(width: 6),
-          Text(text, style: const TextStyle(fontWeight: FontWeight.bold)),
-        ]),
-      );
-
-  Widget _control(IconData icon, String key, {bool large = false}) {
-    return GestureDetector(
-      onTapDown: (_) => _press(key),
-      onTapUp: (_) => _release(key),
-      onTapCancel: () => _release(key),
-      child: Container(
-        width: large ? 76 : 64,
-        height: large ? 76 : 64,
-        decoration: BoxDecoration(
-          color: const Color(0xD9233855),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0xFFFFD166), width: 2),
-          boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 10, offset: Offset(0, 5))],
-        ),
-        child: Icon(icon, size: large ? 38 : 32, color: Colors.white),
-      ),
-    );
-  }
-}
-
-class PlatformData {
-  const PlatformData(this.x, this.y, this.width);
-  final double x, y, width;
-}
-
-class CoinData {
-  const CoinData(this.dx, this.dy);
-  final double dx, dy;
-}
-
-class EnemyData {
-  const EnemyData(this.x, this.y, this.range);
-  final double x, y, range;
-}
-
-class LevelData {
-  const LevelData({
-    required this.name,
-    required this.length,
-    required this.sky,
-    required this.ground,
-    required this.platforms,
-    required this.coins,
-    required this.enemies,
-    required this.decor,
-  });
-
-  final String name;
-  final double length;
-  final Color sky;
-  final Color ground;
-  final List<PlatformData> platforms;
-  final List<CoinData> coins;
-  final List<EnemyData> enemies;
-  final int decor;
-
-  static final List<LevelData> all = [
-    LevelData(
-      name: 'السهول الخضراء', length: 2200,
-      sky: const Color(0xFF72D6F2), ground: const Color(0xFF39965B), decor: 0,
-      platforms: const [
-        PlatformData(0, 390, 500), PlatformData(590, 390, 370),
-        PlatformData(1050, 390, 420), PlatformData(1570, 390, 630),
-        PlatformData(300, 300, 110), PlatformData(720, 315, 130),
-        PlatformData(1190, 300, 130), PlatformData(1760, 310, 140),
-      ],
-      coins: const [
-        CoinData(330, 260), CoinData(375, 260), CoinData(760, 275),
-        CoinData(810, 275), CoinData(1100, 345), CoinData(1230, 260),
-        CoinData(1280, 260), CoinData(1650, 345), CoinData(1800, 270),
-        CoinData(1850, 270), CoinData(2040, 345),
-      ],
-      enemies: const [EnemyData(480, 350, 45), EnemyData(900, 350, 55),
-        EnemyData(1390, 350, 45), EnemyData(1940, 350, 60)],
-    ),
-    LevelData(
-      name: 'صحراء الأسرار', length: 2400,
-      sky: const Color(0xFFFFC078), ground: const Color(0xFFB87536), decor: 1,
-      platforms: const [
-        PlatformData(0, 390, 380), PlatformData(480, 390, 380),
-        PlatformData(950, 390, 420), PlatformData(1460, 390, 360),
-        PlatformData(1910, 390, 490), PlatformData(270, 300, 120),
-        PlatformData(650, 290, 120), PlatformData(1100, 305, 130),
-        PlatformData(1580, 285, 130), PlatformData(2040, 300, 130),
-      ],
-      coins: const [
-        CoinData(300, 260), CoinData(345, 260), CoinData(690, 250),
-        CoinData(740, 250), CoinData(1000, 345), CoinData(1140, 265),
-        CoinData(1190, 265), CoinData(1615, 245), CoinData(1660, 245),
-        CoinData(2070, 260), CoinData(2120, 260), CoinData(2300, 345),
-      ],
-      enemies: const [EnemyData(540, 350, 55), EnemyData(810, 350, 35),
-        EnemyData(1270, 350, 45), EnemyData(1730, 350, 35),
-        EnemyData(2180, 350, 60)],
-    ),
-    LevelData(
-      name: 'قمم الثلج', length: 2500,
-      sky: const Color(0xFF536DAB), ground: const Color(0xFFB9E5F4), decor: 2,
-      platforms: const [
-        PlatformData(0, 390, 430), PlatformData(530, 390, 330),
-        PlatformData(970, 390, 350), PlatformData(1430, 390, 400),
-        PlatformData(1940, 390, 560), PlatformData(290, 295, 120),
-        PlatformData(670, 280, 130), PlatformData(1080, 285, 120),
-        PlatformData(1550, 275, 130), PlatformData(2070, 285, 150),
-      ],
-      coins: const [
-        CoinData(320, 255), CoinData(365, 255), CoinData(710, 240),
-        CoinData(755, 240), CoinData(1040, 345), CoinData(1120, 245),
-        CoinData(1165, 245), CoinData(1590, 235), CoinData(1640, 235),
-        CoinData(2110, 245), CoinData(2160, 245), CoinData(2360, 345),
-      ],
-      enemies: const [EnemyData(580, 350, 45), EnemyData(790, 350, 30),
-        EnemyData(1220, 350, 40), EnemyData(1740, 350, 45),
-        EnemyData(2260, 350, 55)],
-    ),
-  ];
-}
-
-class GamePainter extends CustomPainter {
-  GamePainter({
-    required this.level,
-    required this.playerX,
-    required this.playerY,
-    required this.cameraX,
-    required this.coins,
-    required this.defeated,
-    required this.time,
-    required this.facingRight,
-    required this.heroAtlas,
-    required this.worldAtlas,
-    required this.heroFrame,
-  });
-
-  final LevelData level;
-  final double playerX, playerY, cameraX, time;
-  final bool facingRight;
-  final ui.Image? heroAtlas;
-  final ui.Image? worldAtlas;
-  final int heroFrame;
-  final Set<int> coins, defeated;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final scale = size.height / 450;
-    canvas.save();
-    canvas.scale(scale);
-    final viewWidth = size.width / scale;
-    _rect(canvas, 0, 0, viewWidth, 450, level.sky);
-    _background(canvas, viewWidth);
-    canvas.save();
-    canvas.translate(-cameraX, 0);
-
-    for (final p in level.platforms) {
-      _platform(canvas, p);
-    }
-    for (var i = 0; i < level.coins.length; i++) {
-      if (!coins.contains(i)) _coin(canvas, level.coins[i], time);
-    }
-    for (var i = 0; i < level.enemies.length; i++) {
-      if (defeated.contains(i)) continue;
-      final e = level.enemies[i];
-      final x = e.x + math.sin(time * 1.7 + i) * e.range;
-      _enemy(canvas, x, e.y, time);
-    }
-    _goal(canvas, level.length - 75);
-    _drawHeroSprite(canvas);
-    canvas.restore();
-    _rect(canvas, 0, 426, viewWidth, 24, const Color(0xFF182A38));
-    canvas.restore();
-  }
-
-  static const double _cellW = 40.0;
-  static const double _cellH = 22.5;
-
-  void _drawAtlas(Canvas c, int col, int row, Rect dst, {bool flip = false}) {
-    final atlas = worldAtlas;
-    if (atlas == null) return;
-    final src = Rect.fromLTWH(col * _cellW, row * _cellH, _cellW, _cellH);
-    final paint = Paint()..filterQuality = FilterQuality.high;
-    c.save();
-    if (flip) {
-      c.translate(dst.left * 2 + dst.width, 0);
-      c.scale(-1, 1);
-    }
-    c.drawImageRect(atlas, src, dst, paint);
-    c.restore();
-  }
-
-  void _background(Canvas c, double width) {
-    const panelWidth = 675.0;
-    final offset = -((cameraX * .22) % panelWidth);
-    for (double x = offset - panelWidth; x < width + panelWidth; x += panelWidth) {
-      if (level.decor == 0) {
-        _drawAtlas(c, 2, 0, Rect.fromLTWH(x, 0, panelWidth, 450));
-        _drawAtlas(c, 3, 0, Rect.fromLTWH(x + 275, 275, 112, 150));
-        _drawAtlas(c, 2, 3, Rect.fromLTWH(x + 35, 355, 95, 65));
-      } else if (level.decor == 1) {
-        _drawAtlas(c, 2, 1, Rect.fromLTWH(x, 0, panelWidth, 450));
-        _drawAtlas(c, 1, 1, Rect.fromLTWH(x + 300, 315, 72, 110));
-        _drawAtlas(c, 2, 3, Rect.fromLTWH(x + 35, 355, 95, 65));
-      } else {
-        _drawAtlas(c, 2, 2, Rect.fromLTWH(x, 0, panelWidth, 450));
-        _drawAtlas(c, 1, 2, Rect.fromLTWH(x + 290, 265, 110, 160));
-        _drawAtlas(c, 2, 3, Rect.fromLTWH(x + 35, 355, 95, 65));
+  void simulate() {
+    if(!mounted) return;
+    setState(() {
+      day++;
+      int homes=0,business=0,parks=0;
+      for(int r=0;r<n;r++) for(int c=0;c<n;c++) {
+        final t=map[r][c];
+        if(t.kind==Tool.home) {
+          homes++;
+          if(powered&&hasRoad(r,c)&&t.level<4&&growth%3==0) { t.level++; population+=3; }
+        } else if(t.kind==Tool.shop||t.kind==Tool.factory) {
+          business++;
+          if(powered&&hasRoad(r,c)&&t.level<4&&growth%4==0) t.level++;
+        } else if(t.kind==Tool.park) parks++;
       }
+      growth++;
+      jobs=business*5+8;
+      money+=homes*18+business*38+parks*5-roads*2-(powered?35:0)-business*8;
+      happiness=(70+parks*3+(powered?8:-25)-math.max(0,population~/70)).clamp(15,99);
+      if(!powered&&homes>0) message='تنبيه: مدينتك تحتاج إلى محطة كهرباء';
+    });
+  }
+
+  Color toolColor(Tool t) {
+    switch(t) {
+      case Tool.road:return const Color(0xFFB9C4CC);
+      case Tool.home:return const Color(0xFF54C6A4);
+      case Tool.shop:return const Color(0xFF55A7F2);
+      case Tool.factory:return const Color(0xFFE6A75B);
+      case Tool.power:return const Color(0xFFFFD166);
+      case Tool.park:return const Color(0xFF7ED36D);
+      case Tool.bulldoze:return const Color(0xFFFF7272);
+      case Tool.select:return const Color(0xFFE9F0F5);
     }
   }
-
-  void _platform(Canvas c, PlatformData p) {
-    const col = 0;
-    final row = level.decor;
-    for (double x = p.x; x < p.x + p.width; x += 96) {
-      final w = math.min(96.0, p.x + p.width - x).toDouble();
-      _drawAtlas(c, col, row, Rect.fromLTWH(x, p.y, w, 60));
-    }
-  }
-
-  void _enemy(Canvas c, double x, double y, double t) {
-    _drawAtlas(c, 2, 3, Rect.fromLTWH(x - 9, y - 14, 54, 48),
-        flip: math.sin(t * 1.7) < 0);
-  }
-
-  void _coin(Canvas c, CoinData coin, double t) {
-    final pulse = .82 + .18 * math.sin(t * 6 + coin.dx);
-    _drawAtlas(c, 0, 0,
-        Rect.fromCenter(center: Offset(coin.dx, coin.dy), width: 30 * pulse, height: 34));
-  }
-
-  void _goal(Canvas c, double x) {
-    _drawAtlas(c, 1, 3, Rect.fromLTWH(x - 14, 270, 76, 120));
-  }
-
-  void _drawHeroSprite(Canvas c) {
-    final atlas = heroAtlas;
-    if (atlas == null) return;
-
-    // The actual 192x120 sheet contains 3 columns x 2 rows.
-    // Each complete animation frame is exactly 64x60 pixels.
-    const frameW = 64.0;
-    const frameH = 60.0;
-    const columns = 3;
-    const rows = 2;
-    final frame = heroFrame.clamp(0, columns * rows - 1);
-    final col = frame % columns;
-    final row = frame ~/ columns;
-    final src = Rect.fromLTWH(
-      col * frameW,
-      row * frameH,
-      frameW,
-      frameH,
-    );
-
-    // Draw at the source frame's native resolution: no enlargement blur,
-    // no neighboring characters, and the bottom edge sits on the ground.
-    final dst = Rect.fromLTWH(playerX - 16, playerY - frameH, frameW, frameH);
-    final paint = Paint()
-      ..filterQuality = FilterQuality.none
-      ..isAntiAlias = false;
-
-    c.save();
-    if (!facingRight) {
-      final centerX = playerX + frameW / 2 - 16;
-      c.translate(centerX * 2, 0);
-      c.scale(-1, 1);
-    }
-    c.drawImageRect(atlas, src, dst, paint);
-    c.restore();
-  }
-
-  void _rect(Canvas c, double x, double y, double w, double h, Color color) {
-    c.drawRect(Rect.fromLTWH(x, y, w, h), Paint()..color = color);
-  }
+  String price(Tool t)=>t==Tool.bulldoze?'مجاني':(t==Tool.select?'اختر':'\$'+prices[t].toString());
 
   @override
-  bool shouldRepaint(covariant GamePainter oldDelegate) => true;
+  Widget build(BuildContext context)=>Scaffold(body:SafeArea(child:Row(children:[
+    SizedBox(width:205,child:Container(
+      decoration:const BoxDecoration(color:Color(0xFF172633),border:Border(right:BorderSide(color:Color(0xFF2D4655)))),
+      child:Column(children:[
+        const SizedBox(height:8),
+        const Row(mainAxisAlignment:MainAxisAlignment.center,children:[Icon(Icons.location_city,color:Color(0xFF54D6B0),size:27),SizedBox(width:7),Text('مدينتي',style:TextStyle(fontSize:22,fontWeight:FontWeight.w900))]),
+        const Padding(padding:EdgeInsets.symmetric(vertical:8),child:Text('لوحة البناء',style:TextStyle(color:Colors.white54,fontSize:12))),
+        Expanded(child:ListView(padding:const EdgeInsets.symmetric(horizontal:8),children:[
+          toolButton(Tool.select,Icons.touch_app,'تحديد'),toolButton(Tool.road,Icons.add_road,'الطرق'),
+          toolButton(Tool.home,Icons.house,'منازل'),toolButton(Tool.shop,Icons.storefront,'متاجر'),
+          toolButton(Tool.factory,Icons.factory,'مصانع'),toolButton(Tool.power,Icons.electric_bolt,'كهرباء'),
+          toolButton(Tool.park,Icons.park,'حدائق'),toolButton(Tool.bulldoze,Icons.delete_sweep,'إزالة'),
+        ])),
+        Padding(padding:const EdgeInsets.all(7),child:TextButton.icon(onPressed:resetCity,icon:const Icon(Icons.restart_alt,size:18),label:const Text('مدينة جديدة'))),
+      ]),
+    )),
+    Expanded(child:Column(children:[
+      topBar(),
+      Expanded(child:LayoutBuilder(builder:(context,box)=>Stack(fit:StackFit.expand,children:[
+        GestureDetector(behavior:HitTestBehavior.opaque,onTapDown:(d){final p=screenToTile(d.localPosition,box.biggest);place(p.$1,p.$2);},child:CustomPaint(painter:CityPainter(map:map),child:const SizedBox.expand())),
+        if(help) Positioned(left:10,right:10,bottom:8,child:IgnorePointer(child:Container(padding:const EdgeInsets.all(9),decoration:BoxDecoration(color:const Color(0xE8172633),borderRadius:BorderRadius.circular(12)),child:const Text('اختر نوع البناء من اليسار ثم اضغط على قطعة أرض بجانب الطريق.',textAlign:TextAlign.center,style:TextStyle(fontSize:12))))),
+      ]))),
+      bottomBar(),
+    ]))),
+  ])));
+
+  Widget toolButton(Tool t,IconData icon,String label) {
+    final selected=tool==t, color=toolColor(t);
+    return Padding(padding:const EdgeInsets.only(bottom:5),child:Material(color:selected?color.withOpacity(.2):const Color(0xFF203441),borderRadius:BorderRadius.circular(10),child:InkWell(borderRadius:BorderRadius.circular(10),onTap:()=>setState(()=>{tool=t,message='اختر موقع '+nameOf(t)+' على الخريطة',help=false}),child:Container(height:42,padding:const EdgeInsets.symmetric(horizontal:9),decoration:BoxDecoration(borderRadius:BorderRadius.circular(10),border:Border.all(color:selected?color:Colors.white10,width:selected?1.5:1)),child:Row(children:[Icon(icon,color:color,size:20),const SizedBox(width:8),Expanded(child:Text(label,style:const TextStyle(fontSize:13,fontWeight:FontWeight.bold))),Text(price(t),style:TextStyle(fontSize:10,color:selected?color:Colors.white54))])))));
+  }
+
+  (int,int) screenToTile(Offset p,Size s) {
+    const hw=CityPainter.tileW/2,hh=CityPainter.tileH/2;
+    final x=p.dx-s.width/2,y=p.dy-48;
+    final col=((x/hw+y/hh)/2).round(),row=((y/hh-x/hw)/2).round();
+    return (row,col);
+  }
+
+  Widget stat(IconData icon,String label,String value,Color color)=>Padding(padding:const EdgeInsets.only(right:14),child:Row(mainAxisSize:MainAxisSize.min,children:[Icon(icon,size:18,color:color),const SizedBox(width:5),Column(mainAxisAlignment:MainAxisAlignment.center,crossAxisAlignment:CrossAxisAlignment.start,children:[Text(label,style:const TextStyle(fontSize:10,color:Colors.white54)),Text(value,style:TextStyle(fontSize:13,fontWeight:FontWeight.w900,color:color))])] ));
+  Widget topBar()=>Container(height:56,padding:const EdgeInsets.symmetric(horizontal:12),color:const Color(0xFF1C303D),child:Row(children:[
+    stat(Icons.attach_money,'الميزانية','\$'+money.toString(),const Color(0xFF75D6A1)),
+    stat(Icons.people_alt,'السكان',population.toString(),const Color(0xFF73C9F2)),
+    stat(Icons.work,'الوظائف',jobs.toString(),const Color(0xFFF0BB71)),
+    stat(Icons.mood,'السعادة',happiness.toString()+'%',const Color(0xFFFFD166)),
+    const Spacer(),Text('اليوم '+day.toString(),style:const TextStyle(fontWeight:FontWeight.bold)),
+  ]));
+  Widget bottomBar()=>Container(height:32,padding:const EdgeInsets.symmetric(horizontal:10),color:const Color(0xFF172633),child:Row(children:[
+    const Icon(Icons.info_outline,size:15,color:Color(0xFF54D6B0)),const SizedBox(width:6),
+    Expanded(child:Text(message,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:11,color:Colors.white70))),
+    Text('طرق '+roads.toString()+' • مبانٍ '+buildings.toString(),style:const TextStyle(fontSize:10,color:Colors.white38)),
+  ]));
+
+  void resetCity() {
+    setState((){
+      for(final row in map) for(final t in row){t.kind=Tool.select;t.level=0;}
+      roads=0;buildings=0;money=18000;population=0;jobs=0;happiness=70;day=1;growth=0;
+      for(int c=1;c<17;c++){map[9][c].kind=Tool.road;roads++;}
+      for(int r=3;r<15;r++){if(r!=9){map[r][9].kind=Tool.road;roads++;}}
+      tool=Tool.power;message='مدينة جديدة: ابنِ محطة كهرباء ومنازل ومتاجر';help=true;
+    });
+  }
+}
+
+class CityPainter extends CustomPainter {
+  CityPainter({required this.map});
+  final List<List<Tile>> map;
+  static const double tileW=64,tileH=32;
+  @override
+  void paint(Canvas c,Size s) {
+    c.drawRect(Offset.zero&s,Paint()..shader=const LinearGradient(begin:Alignment.topCenter,end:Alignment.bottomCenter,colors:[Color(0xFF7CB7C2),Color(0xFF527E75),Color(0xFF294B43)]).createShader(Offset.zero&s));
+    for(int i=0;i<13;i++){final x=i*s.width/12-20,h=35.0+(i*29%70);c.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(x,80-h,32+(i%3)*12,h),const Radius.circular(3)),Paint()..color=const Color(0x2440525A));}
+    c.save();c.translate(s.width/2,48);
+    for(int sum=0;sum<=34;sum++)for(int r=0;r<18;r++){final col=sum-r;if(col>=0&&col<18)drawTile(c,r,col,map[r][col]);}
+    c.restore();
+  }
+  Offset center(int r,int col)=>Offset((col-r)*tileW/2,(col+r)*tileH/2);
+  void drawTile(Canvas c,int r,int col,Tile t) {
+    final p=center(r,col);
+    final diamond=Path()..moveTo(p.dx,p.dy-tileH/2)..lineTo(p.dx+tileW/2,p.dy)..lineTo(p.dx,p.dy+tileH/2)..lineTo(p.dx-tileW/2,p.dy)..close();
+    c.drawPath(diamond,Paint()..color=(r+col).isEven?const Color(0xFF719B68):const Color(0xFF789F6D));
+    c.drawPath(diamond,Paint()..color=const Color(0x1CFFFFFF)..style=PaintingStyle.stroke..strokeWidth=.7);
+    switch(t.kind){
+      case Tool.road:road(c,p);break;
+      case Tool.home:building(c,p,t.level,const Color(0xFF4A9D83),const Color(0xFFB9E7D7),0);break;
+      case Tool.shop:building(c,p,t.level,const Color(0xFF367EB4),const Color(0xFFB8E2F8),1);break;
+      case Tool.factory:building(c,p,t.level,const Color(0xFF9B7650),const Color(0xFFE8C58E),2);break;
+      case Tool.power:powerPlant(c,p);break;
+      case Tool.park:park(c,p);break;
+      case Tool.select:break;
+      case Tool.bulldoze:break;
+    }
+  }
+  void road(Canvas c,Offset p){
+    final path=Path()..moveTo(p.dx,p.dy-13)..lineTo(p.dx+27,p.dy)..lineTo(p.dx,p.dy+13)..lineTo(p.dx-27,p.dy)..close();
+    c.drawPath(path,Paint()..color=const Color(0xFF4D5960));
+    c.drawPath(path,Paint()..color=const Color(0xFF899397)..style=PaintingStyle.stroke..strokeWidth=1);
+    c.drawLine(Offset(p.dx-20,p.dy),Offset(p.dx+20,p.dy),Paint()..color=const Color(0xFFFFD66B)..strokeWidth=1.5);
+  }
+  void building(Canvas c,Offset p,int level,Color front,Color roof,int style){
+    final floors=math.max(1,level),height=22.0+floors*10.0,w=style==2?39.0:31.0,d=style==2?23.0:21.0;
+    final top=p.dy-height,left=p.dx-w/2,right=p.dx+w/2,side=Color.lerp(front,Colors.black,.25)!;
+    final roofPath=Path()..moveTo(p.dx,top-9)..lineTo(right+d/2,top+1)..lineTo(p.dx,top+11)..lineTo(left-d/2,top+1)..close();
+    final frontPath=Path()..moveTo(left-d/2,top+1)..lineTo(p.dx,top+11)..lineTo(p.dx,p.dy-3)..lineTo(left-d/2,p.dy-13)..close();
+    final sidePath=Path()..moveTo(p.dx,top+11)..lineTo(right+d/2,top+1)..lineTo(right+d/2,p.dy-13)..lineTo(p.dx,p.dy-3)..close();
+    c.drawPath(frontPath,Paint()..color=front);c.drawPath(sidePath,Paint()..color=side);c.drawPath(roofPath,Paint()..color=roof);
+    if(style==2)c.drawRect(Rect.fromLTWH(p.dx+8,top-16,7,17),Paint()..color=const Color(0xFF727D80));
+    final win=Paint()..color=const Color(0xFFFFE7A4);
+    for(int f=0;f<floors;f++){final y=top+15+f*10.0;c.drawRect(Rect.fromLTWH(left-8,y,5,5),win);c.drawRect(Rect.fromLTWH(p.dx-3,y+3,5,5),win);c.drawRect(Rect.fromLTWH(p.dx+7,y-2,5,5),win);}
+    if(style==0)c.drawCircle(Offset(p.dx,top-12),5,Paint()..color=const Color(0xFF66B96C));
+  }
+  void powerPlant(Canvas c,Offset p){
+    final base=Path()..moveTo(p.dx-24,p.dy-13)..lineTo(p.dx,p.dy-1)..lineTo(p.dx+24,p.dy-13)..lineTo(p.dx,p.dy-25)..close();
+    c.drawPath(base,Paint()..color=const Color(0xFFB88C55));
+    c.drawRect(Rect.fromLTWH(p.dx-14,p.dy-54,28,35),Paint()..color=const Color(0xFF8A9BA2));
+    c.drawRect(Rect.fromLTWH(p.dx-10,p.dy-60,8,10),Paint()..color=const Color(0xFF65747B));
+    c.drawRect(Rect.fromLTWH(p.dx+3,p.dy-63,8,13),Paint()..color=const Color(0xFF65747B));
+    c.drawRect(Rect.fromLTWH(p.dx-4,p.dy-43,8,11),Paint()..color=const Color(0xFFFFD166));
+  }
+  void park(Canvas c,Offset p){
+    c.drawPath(Path()..moveTo(p.dx,p.dy-8)..lineTo(p.dx+24,p.dy)..lineTo(p.dx,p.dy+9)..lineTo(p.dx-24,p.dy)..close(),Paint()..color=const Color(0xFFB7A66D));
+    for(int i=0;i<3;i++){final x=p.dx+(i-1)*13.0;c.drawRect(Rect.fromLTWH(x-2,p.dy-24,4,19),Paint()..color=const Color(0xFF765A3D));c.drawCircle(Offset(x,p.dy-28-(i%2)*4),10,Paint()..color=i.isEven?const Color(0xFF2E8A58):const Color(0xFF45A96B));c.drawCircle(Offset(x-3,p.dy-31),4,Paint()..color=const Color(0xFF78C77B));}
+  }
+  @override
+  bool shouldRepaint(covariant CityPainter oldDelegate)=>true;
 }
