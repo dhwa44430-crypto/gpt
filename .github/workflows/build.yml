@@ -17,6 +17,8 @@ jobs:
           cache: true
       - name: Generate Android project files
         run: flutter create --platforms=android --project-name layth_adventure .
+      - name: Remove generated starter test
+        run: rm -f test/widget_test.dart
       - name: Download original CC0 platformer art pack
         run: |
           mkdir -p third_party/kenney
