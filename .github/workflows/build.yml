@@ -13,6 +13,21 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Download real CC0 hospital models
+        run: |
+          mkdir -p assets/models
+          curl -fL --retry 3 https://tevy.dev/models/hospital-ward/v2/lod0.glb -o assets/models/hospital_ward.glb
+          curl -fL --retry 3 https://tevy.dev/models/operating-theatre/v2/lod0.glb -o assets/models/operating_theatre.glb
+          curl -fL --retry 3 https://tevy.dev/models/hospital-corridor-straight/v1/lod0.glb -o assets/models/hospital_corridor.glb
+          curl -fL --retry 3 https://tevy.dev/models/ambulance/v1/lod0.glb -o assets/models/ambulance.glb
+          curl -fL --retry 3 https://tevy.dev/models/hospital-building/v2/lod1.glb -o assets/models/hospital_exterior.glb
+          cat > assets/models/ASSET_LICENSES.txt <<'EOF'
+          Hospital Ward, Operating Theatre, Hospital Corridor Straight, Ambulance, Hospital Building
+          Source: https://tevy.dev/
+          License: CC0 1.0 Universal. Free for commercial and non-commercial use.
+          Asset versions and download URLs are pinned in .github/workflows/build.yml.
+          EOF
+          ls -lh assets/models
       - name: Import Godot project
         run: godot --headless --editor --path . --import
       - name: Export Android APK
