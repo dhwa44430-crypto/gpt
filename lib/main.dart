@@ -30,7 +30,7 @@ class CityTile {
   Tool kind;
   int level;
   late three.Mesh ground;
-  three.Group? structure;
+  three.Object3D? structure;
 }
 
 class CityScreen extends StatefulWidget {
