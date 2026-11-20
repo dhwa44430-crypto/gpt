@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -56,6 +57,15 @@ class _GameScreenState extends State<GameScreen>
   bool _jumpQueued = false;
   final Set<int> _collected = <int>{};
   final Set<int> _defeated = <int>{};
+  ui.Image? _heroAtlas;
+
+  Future<void> _loadHeroAtlas() async {
+    final data = await DefaultAssetBundle.of(context).load('assets/images/hero/hero_spritesheet.webp');
+    final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+    final frame = await codec.getNextFrame();
+    if (!mounted) { frame.image.dispose(); return; }
+    setState(() => _heroAtlas = frame.image);
+  }
 
   LevelData get _level => _levels[_levelIndex];
 
@@ -68,10 +78,12 @@ class _GameScreenState extends State<GameScreen>
     )..addListener(_tick);
     _ticker.repeat();
     _clock.start();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadHeroAtlas());
   }
 
   @override
   void dispose() {
+    _heroAtlas?.dispose();
     _ticker.dispose();
     _clock.stop();
     super.dispose();
@@ -231,6 +243,8 @@ class _GameScreenState extends State<GameScreen>
                   defeated: _defeated,
                   time: _clock.elapsedMilliseconds / 1000,
                   facingRight: _velocityX >= 0,
+                  heroAtlas: _heroAtlas,
+                  heroFrame: !_grounded ? 4 : (_held.contains('right') || _held.contains('left') ? 1 + ((_clock.elapsedMilliseconds ~/ 130) % 3) : 0),
                 ),
               ),
             ),
@@ -469,11 +483,15 @@ class GamePainter extends CustomPainter {
     required this.defeated,
     required this.time,
     required this.facingRight,
+    required this.heroAtlas,
+    required this.heroFrame,
   });
 
   final LevelData level;
   final double playerX, playerY, cameraX, time;
   final bool facingRight;
+  final ui.Image? heroAtlas;
+  final int heroFrame;
   final Set<int> coins, defeated;
 
   @override
@@ -500,7 +518,7 @@ class GamePainter extends CustomPainter {
       _enemy(canvas, x, e.y, time);
     }
     _goal(canvas, level.length - 75);
-    _hero(canvas, playerX, playerY, time, facingRight);
+    _drawHeroSprite(canvas);
     canvas.restore();
     _rect(canvas, 0, 426, viewWidth, 24, const Color(0xFF182A38));
     canvas.restore();
@@ -550,121 +568,23 @@ class GamePainter extends CustomPainter {
     }
   }
 
-  // بطل أنمي أصلي بمنظور جانبي مثل ألعاب المنصات الكلاسيكية.
-  // السيف ظاهر دائماً، ويتجه البطل نحو جهة الحركة.
-  void _hero(Canvas c, double x, double y, double t, bool faceRight) {
-    final bob = math.sin(t * 11) * 1.2;
+  void _drawHeroSprite(Canvas c) {
+    final atlas = heroAtlas;
+    if (atlas == null) return;
+    const frameW = 64.0;
+    const frameH = 80.0;
+    final frame = heroFrame.clamp(0, 7);
+    final col = frame % 4;
+    final row = frame ~/ 4;
+    final src = Rect.fromLTWH(col * frameW, row * frameH, frameW, frameH);
+    final dst = Rect.fromLTWH(playerX - 12, playerY - 27, 64, 80);
+    final paint = Paint()..filterQuality = FilterQuality.high;
     c.save();
-    if (!faceRight) {
-      c.translate(x * 2 + 46, 0);
+    if (!facingRight) {
+      c.translate(playerX * 2 + 40, 0);
       c.scale(-1, 1);
     }
-
-    final outline = Paint()..color = const Color(0xFF17243D);
-    final hair = Paint()..color = const Color(0xFF20243A);
-    final hairLight = Paint()..color = const Color(0xFF48516F);
-    final skin = Paint()..color = const Color(0xFFFFD0AD);
-    final jacket = Paint()..color = const Color(0xFF2467C9);
-    final jacketShade = Paint()..color = const Color(0xFF16418A);
-    final red = Paint()..color = const Color(0xFFE94D61);
-    final gold = Paint()..color = const Color(0xFFFFD166);
-    final white = Paint()..color = const Color(0xFFF5F8FF);
-
-    c.drawOval(Rect.fromLTWH(x + 3, y + 45, 43, 8), Paint()..color = Colors.black26);
-
-    // وشاح أحمر متطاير خلف البطل.
-    final scarf = Path()
-      ..moveTo(x + 15, y + 19 + bob)
-      ..quadraticBezierTo(x - 1, y + 12 + bob, x - 7, y + 24 + bob)
-      ..lineTo(x + 5, y + 29 + bob)
-      ..lineTo(x - 2, y + 37 + bob)
-      ..quadraticBezierTo(x + 15, y + 34 + bob, x + 20, y + 27 + bob)
-      ..close();
-    c.drawPath(scarf, red);
-
-    // الساقان والحذاءان.
-    c.drawRRect(RRect.fromRectAndRadius(
-      Rect.fromLTWH(x + 13, y + 34 + bob, 10, 12), const Radius.circular(4)), jacketShade);
-    c.drawRRect(RRect.fromRectAndRadius(
-      Rect.fromLTWH(x + 27, y + 34 + bob, 10, 12), const Radius.circular(4)), jacket);
-    c.drawRRect(RRect.fromRectAndRadius(
-      Rect.fromLTWH(x + 8, y + 42 + bob, 17, 6), const Radius.circular(3)), outline);
-    c.drawRRect(RRect.fromRectAndRadius(
-      Rect.fromLTWH(x + 25, y + 42 + bob, 17, 6), const Radius.circular(3)), outline);
-
-    // الجذع والسترة.
-    c.drawRRect(RRect.fromRectAndRadius(
-      Rect.fromLTWH(x + 10, y + 19 + bob, 29, 22), const Radius.circular(8)), outline);
-    c.drawRRect(RRect.fromRectAndRadius(
-      Rect.fromLTWH(x + 12, y + 20 + bob, 25, 19), const Radius.circular(6)), jacket);
-    final collar = Path()
-      ..moveTo(x + 17, y + 19 + bob)
-      ..lineTo(x + 27, y + 29 + bob)
-      ..lineTo(x + 33, y + 19 + bob)
-      ..close();
-    c.drawPath(collar, white);
-    c.drawCircle(Offset(x + 31, y + 32 + bob), 2, gold);
-
-    // الذراع الأمامية وقبضة السيف.
-    c.drawRRect(RRect.fromRectAndRadius(
-      Rect.fromLTWH(x + 31, y + 23 + bob, 12, 7), const Radius.circular(4)), skin);
-
-    // نصل السيف المتجه إلى الأمام مع لمعان وحدّ واضح.
-    final blade = Path()
-      ..moveTo(x + 39, y + 23 + bob)
-      ..lineTo(x + 57, y + 4 + bob)
-      ..lineTo(x + 49, y + 29 + bob)
-      ..lineTo(x + 39, y + 27 + bob)
-      ..close();
-    c.drawPath(blade, outline);
-    final bladeInner = Path()
-      ..moveTo(x + 41, y + 22 + bob)
-      ..lineTo(x + 55, y + 7 + bob)
-      ..lineTo(x + 48, y + 26 + bob)
-      ..close();
-    c.drawPath(bladeInner, white);
-    c.drawLine(Offset(x + 37, y + 25 + bob), Offset(x + 47, y + 31 + bob),
-        Paint()..color = const Color(0xFFFFD166)..strokeWidth = 3..strokeCap = StrokeCap.round);
-    c.drawLine(Offset(x + 39, y + 28 + bob), Offset(x + 34, y + 34 + bob),
-        Paint()..color = outline..strokeWidth = 4..strokeCap = StrokeCap.round);
-
-    // الرأس الجانبي: عين واحدة تنظر إلى الأمام، لا إلى اللاعب.
-    c.drawOval(Rect.fromLTWH(x + 17, y + 3 + bob, 23, 22), outline);
-    c.drawOval(Rect.fromLTWH(x + 19, y + 4 + bob, 19, 19), skin);
-    c.drawCircle(Offset(x + 39, y + 15 + bob), 3.2, skin);
-
-    // شعر أنمي مسنن للخلف والأعلى.
-    final spikes = Path()
-      ..moveTo(x + 17, y + 13 + bob)
-      ..lineTo(x + 9, y + 7 + bob)
-      ..lineTo(x + 19, y + 8 + bob)
-      ..lineTo(x + 16, y - 1 + bob)
-      ..lineTo(x + 26, y + 5 + bob)
-      ..lineTo(x + 31, y - 4 + bob)
-      ..lineTo(x + 34, y + 6 + bob)
-      ..lineTo(x + 43, y + 3 + bob)
-      ..lineTo(x + 39, y + 13 + bob)
-      ..lineTo(x + 29, y + 12 + bob)
-      ..close();
-    c.drawPath(spikes, hair);
-    c.drawLine(Offset(x + 18, y + 8 + bob), Offset(x + 29, y + 3 + bob),
-        Paint()..color = hairLight..strokeWidth = 2);
-    c.drawLine(Offset(x + 28, y + 7 + bob), Offset(x + 36, y + 5 + bob),
-        Paint()..color = const Color(0xFFE94D61)..strokeWidth = 2.5);
-
-    // عين جانبية كبيرة بأسلوب الأنمي.
-    c.drawOval(Rect.fromLTWH(x + 33, y + 13 + bob, 5, 7), white);
-    c.drawOval(Rect.fromLTWH(x + 35, y + 14 + bob, 2.5, 5), outline);
-    c.drawCircle(Offset(x + 36, y + 15 + bob), 1, white);
-    c.drawLine(Offset(x + 33, y + 12 + bob), Offset(x + 39, y + 11 + bob),
-        Paint()..color = outline..strokeWidth = 1.5);
-    c.drawLine(Offset(x + 35, y + 21 + bob), Offset(x + 39, y + 20 + bob),
-        Paint()..color = const Color(0xFFB75C68)..strokeWidth = 1);
-
-    // رباط الرأس.
-    c.drawLine(Offset(x + 17, y + 8 + bob), Offset(x + 39, y + 9 + bob),
-        Paint()..color = gold..strokeWidth = 2.2);
-
+    c.drawImageRect(atlas, src, dst, paint);
     c.restore();
   }
 
