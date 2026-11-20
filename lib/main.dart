@@ -305,10 +305,8 @@ class AdventurePainter extends CustomPainter {
     }
     final outline=Paint()..color=const Color(0xff30202a);
     final skin=Paint()..color=const Color(0xffffc58f);
-    final hair=Paint()..color=const Color(0xff48251d);
     final hairLight=Paint()..color=const Color(0xff87452b);
     final red=Paint()..color=const Color(0xffe7472f);
-    final redShade=Paint()..color=const Color(0xffa92e2a);
     final scarf=Paint()..color=const Color(0xff08aeb5);
     final scarfShade=Paint()..color=const Color(0xff087b88);
     final shirt=Paint()..color=const Color(0xfffff0d5);
