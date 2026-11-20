@@ -17,6 +17,18 @@ jobs:
           cache: true
       - name: Generate Android project files
         run: flutter create --platforms=android --project-name madinati_city_builder .
+      - name: Download CC0 city 3D models
+        run: |
+          curl -L --fail --retry 3 https://github.com/kayquer/kit-cidade-lowpoly/archive/refs/heads/main.zip -o /tmp/city-kit.zip
+          unzip -q /tmp/city-kit.zip -d /tmp/city-kit
+          mkdir -p assets/models/{residencial,comercial,industrial,energia,parques,ruas}
+          cp /tmp/city-kit/kit-cidade-lowpoly-main/models/residencial/casa_simples.glb assets/models/residencial/
+          cp /tmp/city-kit/kit-cidade-lowpoly-main/models/comercial/loja_esquina.glb assets/models/comercial/
+          cp /tmp/city-kit/kit-cidade-lowpoly-main/models/industrial/fabrica.glb assets/models/industrial/
+          cp /tmp/city-kit/kit-cidade-lowpoly-main/models/energia/termeletrica.glb assets/models/energia/
+          cp /tmp/city-kit/kit-cidade-lowpoly-main/models/parques/parque.glb assets/models/parques/
+          cp /tmp/city-kit/kit-cidade-lowpoly-main/models/ruas/asfalto_reta.glb assets/models/ruas/
+          cp /tmp/city-kit/kit-cidade-lowpoly-main/LICENSE assets/models/LICENSE
       - name: Install required Android CMake version
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "cmake;3.31.4"
       - run: flutter pub get
