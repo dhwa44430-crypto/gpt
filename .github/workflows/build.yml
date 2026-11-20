@@ -13,6 +13,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Install curl for asset downloads
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates
       - name: Download original anime hero and world sprite sheets
         run: |
           mkdir -p assets/images/hero assets/images/world
