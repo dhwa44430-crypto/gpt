@@ -49,6 +49,8 @@ class _CityScreenState extends State<CityScreen> {
   final three.Vector2 pointer = three.Vector2();
   final List<three.Object3D> groundTiles = [];
   final Map<int, dynamic> materials = {};
+  final Map<Tool, three.Object3D> buildingModels = {};
+  three.Object3D? roadModel;
   three.BoxGeometry? groundGeometry;
 
   Tool selectedTool = Tool.home;
@@ -95,6 +97,8 @@ class _CityScreenState extends State<CityScreen> {
     final fill = three.DirectionalLight(0x9ecfff, 0.35)..position.setValues(12, 10, -15);
     threeJs.scene.add(fill);
 
+    await loadCityModels();
+
     cameraControls = three.MapControls(threeJs.camera, threeJs.globalKey);
     cameraControls.enableDamping = true;
     cameraControls.dampingFactor = 0.07;
@@ -110,6 +114,23 @@ class _CityScreenState extends State<CityScreen> {
     createStartingCity();
     threeJs.domElement.addEventListener(three.PeripheralType.pointerdown, onCityPointerDown);
     threeJs.addAnimationEvent((dt) { cameraControls.update(); });
+  }
+
+  Future<void> loadCityModels() async {
+    final loader = three.GLTFLoader();
+    final models = <Tool, String>{
+      Tool.home: 'assets/models/residencial/casa_simples.glb',
+      Tool.shop: 'assets/models/comercial/loja_esquina.glb',
+      Tool.factory: 'assets/models/industrial/fabrica.glb',
+      Tool.power: 'assets/models/energia/termeletrica.glb',
+      Tool.park: 'assets/models/parques/parque.glb',
+    };
+    for (final entry in models.entries) {
+      final data = await loader.fromAsset(entry.value);
+      if (data != null) buildingModels[entry.key] = data.scene;
+    }
+    final road = await loader.fromAsset('assets/models/ruas/asfalto_reta.glb');
+    if (road != null) roadModel = road.scene;
   }
 
   dynamic material(int color) => materials.putIfAbsent(
@@ -183,12 +204,12 @@ class _CityScreenState extends State<CityScreen> {
   void updateTileAppearance(int row, int col) {
     final tile = city[row][col];
     tile.ground.material = material(tile.kind == Tool.road ? 0x414B53 : tileColor(row, col));
-    if (tile.kind == Tool.road) {
-      final marker = three.Group();
-      addBox(marker, 0.07, 0.025, 0.42, 0, 0.085, 0, 0xF4D77B);
-      marker.position.setValues(col - 8.5, 0, row - 8.5);
-      tile.structure = marker;
-      threeJs.scene.add(marker);
+    if (tile.kind == Tool.road && roadModel != null) {
+      final road = roadModel!.clone();
+      road.scale.setValues(0.5, 0.5, 0.5);
+      road.position.setValues(col - 8.5, 0.15, row - 8.5);
+      tile.structure = road;
+      threeJs.scene.add(road);
     }
   }
 
@@ -218,56 +239,13 @@ class _CityScreenState extends State<CityScreen> {
 
   three.Group createBuilding(Tool kind, int level) {
     final group = three.Group();
-    final floors = math.max(1, level).toInt();
-    switch (kind) {
-      case Tool.home:
-        addBox(group, 0.68, 0.48 + floors * 0.28, 0.68, 0, 0.24 + floors * 0.14, 0, 0xD8B58C);
-        addBox(group, 0.76, 0.12, 0.76, 0, 0.52 + floors * 0.28, 0, 0xA94F43);
-        for (int floor = 0; floor < floors; floor++) {
-          final y = 0.16 + floor * 0.28;
-          for (final x in [-0.19, 0.19]) {
-            addBox(group, 0.105, 0.12, 0.025, x, y, 0.35, 0x7ED7E8);
-            addBox(group, 0.105, 0.12, 0.025, x, y, -0.35, 0x7ED7E8);
-          }
-        }
-        addBox(group, 0.16, 0.28, 0.035, 0, 0.15, 0.355, 0x654331);
-        break;
-      case Tool.shop:
-        addBox(group, 0.76, 0.7 + floors * 0.24, 0.72, 0, 0.35 + floors * 0.12, 0, 0x5A91BD);
-        addBox(group, 0.82, 0.13, 0.78, 0, 0.76 + floors * 0.24, 0, 0xDCE8EF);
-        addBox(group, 0.8, 0.2, 0.08, 0, 0.18, 0.39, 0xF2C45D);
-        for (final x in [-0.24, 0.0, 0.24]) {
-          addBox(group, 0.13, 0.25, 0.025, x, 0.43, 0.37, 0xA9E7F0);
-        }
-        break;
-      case Tool.factory:
-        addBox(group, 0.82, 0.56, 0.78, 0, 0.28, 0, 0xA77B53);
-        addBox(group, 0.86, 0.16, 0.82, 0, 0.64, 0, 0xC8A477);
-        addBox(group, 0.17, 0.85, 0.17, 0.22, 1.0, -0.18, 0x737E83);
-        addBox(group, 0.12, 0.12, 0.12, 0.22, 1.48, -0.18, 0xD1D5D4);
-        for (final x in [-0.24, 0.22]) {
-          addBox(group, 0.14, 0.13, 0.025, x, 0.3, 0.4, 0xF5D78C);
-        }
-        break;
-      case Tool.power:
-        addBox(group, 0.78, 0.68, 0.78, 0, 0.34, 0, 0x899BA5);
-        addBox(group, 0.25, 1.0, 0.25, -0.22, 0.86, -0.18, 0x606F79);
-        addBox(group, 0.2, 0.76, 0.2, 0.22, 0.74, 0.18, 0x74848D);
-        addBox(group, 0.18, 0.22, 0.035, 0, 0.33, 0.4, 0xFFD36B);
-        break;
-      case Tool.park:
-        final lawn = three.Mesh(three.BoxGeometry(0.86, 0.035, 0.86), material(0x69A85C));
-        lawn.position.setValues(0, 0.02, 0);
-        group.add(lawn);
-        addTree(group, -0.22, -0.2, scale: 0.8);
-        addTree(group, 0.2, -0.18, scale: 0.72);
-        addTree(group, 0, 0.2, scale: 0.75);
-        addBox(group, 0.12, 0.06, 0.42, 0, 0.08, 0, 0xD5C18C);
-        break;
-      case Tool.road:
-      case Tool.select:
-      case Tool.bulldoze:
-        break;
+    final source = buildingModels[kind];
+    if (source != null) {
+      final model = source.clone();
+      final scale = kind == Tool.park ? 0.5 : 0.5;
+      model.scale.setValues(scale, scale, scale);
+      group.add(model);
+      return group;
     }
     return group;
   }
