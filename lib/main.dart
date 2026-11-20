@@ -563,23 +563,23 @@ class GamePainter extends CustomPainter {
     for (double x = offset - panelWidth; x < width + panelWidth; x += panelWidth) {
       if (level.decor == 0) {
         _drawAtlas(c, 2, 0, Rect.fromLTWH(x, 0, panelWidth, 450));
-        _drawAtlas(c, 2, 2, Rect.fromLTWH(x + 275, 275, 112, 150));
-        _drawAtlas(c, 3, 3, Rect.fromLTWH(x + 35, 355, 95, 65));
+        _drawAtlas(c, 3, 0, Rect.fromLTWH(x + 275, 275, 112, 150));
+        _drawAtlas(c, 2, 3, Rect.fromLTWH(x + 35, 355, 95, 65));
       } else if (level.decor == 1) {
-        _drawAtlas(c, 0, 1, Rect.fromLTWH(x, 0, panelWidth, 450));
-        _drawAtlas(c, 2, 1, Rect.fromLTWH(x + 300, 315, 72, 110));
-        _drawAtlas(c, 3, 3, Rect.fromLTWH(x + 35, 355, 95, 65));
+        _drawAtlas(c, 2, 1, Rect.fromLTWH(x, 0, panelWidth, 450));
+        _drawAtlas(c, 1, 1, Rect.fromLTWH(x + 300, 315, 72, 110));
+        _drawAtlas(c, 2, 3, Rect.fromLTWH(x + 35, 355, 95, 65));
       } else {
-        _drawAtlas(c, 3, 1, Rect.fromLTWH(x, 0, panelWidth, 450));
-        _drawAtlas(c, 0, 3, Rect.fromLTWH(x + 290, 265, 110, 160));
-        _drawAtlas(c, 1, 3, Rect.fromLTWH(x + 35, 355, 95, 65));
+        _drawAtlas(c, 2, 2, Rect.fromLTWH(x, 0, panelWidth, 450));
+        _drawAtlas(c, 1, 2, Rect.fromLTWH(x + 290, 265, 110, 160));
+        _drawAtlas(c, 2, 3, Rect.fromLTWH(x + 35, 355, 95, 65));
       }
     }
   }
 
   void _platform(Canvas c, PlatformData p) {
-    final col = level.decor == 0 ? 3 : level.decor == 1 ? 1 : 0;
-    final row = level.decor == 0 ? 0 : level.decor == 1 ? 1 : 2;
+    const col = 0;
+    final row = level.decor;
     for (double x = p.x; x < p.x + p.width; x += 96) {
       final w = math.min(96.0, p.x + p.width - x).toDouble();
       _drawAtlas(c, col, row, Rect.fromLTWH(x, p.y, w, 60));
@@ -587,7 +587,7 @@ class GamePainter extends CustomPainter {
   }
 
   void _enemy(Canvas c, double x, double y, double t) {
-    _drawAtlas(c, 1, 0, Rect.fromLTWH(x - 9, y - 14, 54, 48),
+    _drawAtlas(c, 2, 3, Rect.fromLTWH(x - 9, y - 14, 54, 48),
         flip: math.sin(t * 1.7) < 0);
   }
 
@@ -598,7 +598,7 @@ class GamePainter extends CustomPainter {
   }
 
   void _goal(Canvas c, double x) {
-    _drawAtlas(c, 1, 2, Rect.fromLTWH(x - 14, 270, 76, 120));
+    _drawAtlas(c, 1, 3, Rect.fromLTWH(x - 14, 270, 76, 120));
   }
 
   void _drawHeroSprite(Canvas c) {
