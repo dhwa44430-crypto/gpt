@@ -1,4 +1,4 @@
-name: Build Anime Platform Adventure Android APK
+name: Build Arrow Escape Puzzle Android APK
 on:
   push:
     branches: ["main"]
@@ -13,17 +13,6 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - name: Install curl for asset downloads
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends curl ca-certificates
-      - name: Download original anime hero and world sprite sheets
-        run: |
-          mkdir -p assets/images/hero assets/images/world
-          curl -fL --retry 3 https://raw.githubusercontent.com/dhwa44430-crypto/gpt/afebc9e832893662906c69b28424833887daec3f/assets/images/hero/hero_spritesheet.webp -o assets/images/hero/hero_spritesheet.webp
-          curl -fL --retry 3 https://raw.githubusercontent.com/dhwa44430-crypto/gpt/afebc9e832893662906c69b28424833887daec3f/assets/images/world/world_atlas.webp -o assets/images/world/world_atlas.webp
-          test -s assets/images/hero/hero_spritesheet.webp
-          test -s assets/images/world/world_atlas.webp
       - name: Install Android export requirements
         run: |
           apt-get update
@@ -58,11 +47,9 @@ jobs:
           if [ ! -f "$TEMPLATE_DIR/version.txt" ]; then printf '4.4.1.stable\n' > "$TEMPLATE_DIR/version.txt"; fi
           test "$(tr -d '\r\n' < "$TEMPLATE_DIR/version.txt")" = "4.4.1.stable"
           keytool -genkeypair -noprompt -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
-          echo "Android export prerequisites installed."
       - name: Import Godot project
         run: |
           export HOME=/github/home
-          export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
           godot --headless --editor --path . --import
       - name: Export Android APK
         run: |
@@ -78,10 +65,10 @@ jobs:
           export GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD="android"
           mkdir -p build
           godot --headless --editor --path . --quit --verbose
-          godot --headless --path . --export-debug "Android" build/AnimePlatformAdventure.apk
+          godot --headless --path . --export-debug "Android" build/ArrowEscapePuzzle.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: anime-platform-adventure-android
-          path: build/AnimePlatformAdventure.apk
+          name: arrow-escape-puzzle-android
+          path: build/ArrowEscapePuzzle.apk
           if-no-files-found: error
           retention-days: 14
