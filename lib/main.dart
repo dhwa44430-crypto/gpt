@@ -540,8 +540,8 @@ class GamePainter extends CustomPainter {
     canvas.restore();
   }
 
-  static const double _cellW = 80.0;
-  static const double _cellH = 45.0;
+  static const double _cellW = 40.0;
+  static const double _cellH = 22.5;
 
   void _drawAtlas(Canvas c, int col, int row, Rect dst, {bool flip = false}) {
     final atlas = worldAtlas;
