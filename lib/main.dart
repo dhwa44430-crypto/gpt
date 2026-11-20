@@ -577,7 +577,7 @@ class GamePainter extends CustomPainter {
     final col = level.decor == 0 ? 3 : level.decor == 1 ? 0 : 1;
     final row = level.decor == 0 ? 0 : 1;
     for (double x = p.x; x < p.x + p.width; x += 96) {
-      final w = math.min(96.0, p.x + p.width - x);
+      final w = math.min(96.0, p.x + p.width - x).toDouble();
       _drawAtlas(c, col, row, Rect.fromLTWH(x, p.y, w, 60));
     }
   }
