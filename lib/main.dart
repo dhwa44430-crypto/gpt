@@ -288,7 +288,7 @@ class AdventurePainter extends CustomPainter {
 
     final hero=invulnerable>0?'hero_hurt':(!onGround?'hero_jump':vx.abs()>35?(elapsed%0.24<0.12?'hero_run':'hero_run2'):'hero_idle');
     if(invulnerable<=0 || (elapsed*12).floor().isEven) {
-      _image(canvas,hero,Rect.fromLTWH(playerX-camera,playerY,heroW,heroH),flip:!facingRight);
+      _image(canvas,hero,Rect.fromLTWH(playerX-camera,playerY,gameHeroW,gameHeroH),flip:!facingRight);
     }
     canvas.restore();
   }
