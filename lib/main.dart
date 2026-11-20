@@ -89,8 +89,8 @@ class _CityScreenState extends State<CityScreen> {
       if(t.kind==Tool.select) { setState(()=>message='لا يوجد شيء لإزالته هنا'); return; }
       setState(() {
         if(t.kind==Tool.road) roads--; else buildings--;
-        if(t.kind==Tool.home) population=math.max(0,population-4);
-        if(t.kind==Tool.shop||t.kind==Tool.factory) jobs=math.max(0,jobs-3);
+        if(t.kind==Tool.home) population=math.max(0,population-4).toInt();
+        if(t.kind==Tool.shop||t.kind==Tool.factory) jobs=math.max(0,jobs-3).toInt();
         t.kind=Tool.select; t.level=0; message='تمت إزالة البناء';
       });
       return;
@@ -125,7 +125,7 @@ class _CityScreenState extends State<CityScreen> {
       growth++;
       jobs=business*5+8;
       money+=homes*18+business*38+parks*5-roads*2-(powered?35:0)-business*8;
-      happiness=(70+parks*3+(powered?8:-25)-math.max(0,population~/70)).clamp(15,99);
+      happiness=(70+parks*3+(powered?8:-25)-math.max(0,population~/70)).clamp(15,99).toInt();
       if(!powered&&homes>0) message='تنبيه: مدينتك تحتاج إلى محطة كهرباء';
     });
   }
@@ -173,12 +173,14 @@ class _CityScreenState extends State<CityScreen> {
 
   Widget toolButton(Tool t,IconData icon,String label) {
     final selected=tool==t, color=toolColor(t);
-    return Padding(padding:const EdgeInsets.only(bottom:5),child:Material(color:selected?color.withOpacity(.2):const Color(0xFF203441),borderRadius:BorderRadius.circular(10),child:InkWell(borderRadius:BorderRadius.circular(10),onTap:()=>setState(()=>{tool=t,message='اختر موقع '+nameOf(t)+' على الخريطة',help=false}),child:Container(height:42,padding:const EdgeInsets.symmetric(horizontal:9),decoration:BoxDecoration(borderRadius:BorderRadius.circular(10),border:Border.all(color:selected?color:Colors.white10,width:selected?1.5:1)),child:Row(children:[Icon(icon,color:color,size:20),const SizedBox(width:8),Expanded(child:Text(label,style:const TextStyle(fontSize:13,fontWeight:FontWeight.bold))),Text(price(t),style:TextStyle(fontSize:10,color:selected?color:Colors.white54))])))));
+    return Padding(padding:const EdgeInsets.only(bottom:5),child:Material(color:selected?color.withOpacity(.2):const Color(0xFF203441),borderRadius:BorderRadius.circular(10),child:InkWell(borderRadius:BorderRadius.circular(10),onTap:()=>setState(() { tool=t; message='اختر موقع '+nameOf(t)+' على الخريطة'; help=false; }),child:Container(height:42,padding:const EdgeInsets.symmetric(horizontal:9),decoration:BoxDecoration(borderRadius:BorderRadius.circular(10),border:Border.all(color:selected?color:Colors.white10,width:selected?1.5:1)),child:Row(children:[Icon(icon,color:color,size:20),const SizedBox(width:8),Expanded(child:Text(label,style:const TextStyle(fontSize:13,fontWeight:FontWeight.bold))),Text(price(t),style:TextStyle(fontSize:10,color:selected?color:Colors.white54))])))));
   }
 
   (int,int) screenToTile(Offset p,Size s) {
     const hw=CityPainter.tileW/2,hh=CityPainter.tileH/2;
-    final x=p.dx-s.width/2,y=p.dy-48;
+    final scale=math.min((s.width-20)/(n*CityPainter.tileW),(s.height-24)/(n*CityPainter.tileH)).clamp(.1,1.0).toDouble();
+    final offsetY=(s.height-n*CityPainter.tileH*scale)/2;
+    final x=(p.dx-s.width/2)/scale,y=(p.dy-offsetY)/scale;
     final col=((x/hw+y/hh)/2).round(),row=((y/hh-x/hw)/2).round();
     return (row,col);
   }
@@ -216,7 +218,9 @@ class CityPainter extends CustomPainter {
   void paint(Canvas c,Size s) {
     c.drawRect(Offset.zero&s,Paint()..shader=const LinearGradient(begin:Alignment.topCenter,end:Alignment.bottomCenter,colors:[Color(0xFF7CB7C2),Color(0xFF527E75),Color(0xFF294B43)]).createShader(Offset.zero&s));
     for(int i=0;i<13;i++){final x=i*s.width/12-20,h=35.0+(i*29%70);c.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(x,80-h,32+(i%3)*12,h),const Radius.circular(3)),Paint()..color=const Color(0x2440525A));}
-    c.save();c.translate(s.width/2,48);
+    final scale=math.min((s.width-20)/(18*tileW),(s.height-24)/(18*tileH)).clamp(.1,1.0).toDouble();
+    final offsetY=(s.height-18*tileH*scale)/2;
+    c.save();c.translate(s.width/2,offsetY);c.scale(scale);
     for(int sum=0;sum<=34;sum++)for(int r=0;r<18;r++){final col=sum-r;if(col>=0&&col<18)drawTile(c,r,col,map[r][col]);}
     c.restore();
   }
@@ -244,7 +248,7 @@ class CityPainter extends CustomPainter {
     c.drawLine(Offset(p.dx-20,p.dy),Offset(p.dx+20,p.dy),Paint()..color=const Color(0xFFFFD66B)..strokeWidth=1.5);
   }
   void building(Canvas c,Offset p,int level,Color front,Color roof,int style){
-    final floors=math.max(1,level),height=22.0+floors*10.0,w=style==2?39.0:31.0,d=style==2?23.0:21.0;
+    final floors=math.max(1,level).toDouble(),height=22.0+math.max(1,level)*10.0,w=style==2?39.0:31.0,d=style==2?23.0:21.0;
     final top=p.dy-height,left=p.dx-w/2,right=p.dx+w/2,side=Color.lerp(front,Colors.black,.25)!;
     final roofPath=Path()..moveTo(p.dx,top-9)..lineTo(right+d/2,top+1)..lineTo(p.dx,top+11)..lineTo(left-d/2,top+1)..close();
     final frontPath=Path()..moveTo(left-d/2,top+1)..lineTo(p.dx,top+11)..lineTo(p.dx,p.dy-3)..lineTo(left-d/2,p.dy-13)..close();
