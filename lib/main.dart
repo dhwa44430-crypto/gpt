@@ -624,7 +624,7 @@ class GamePainter extends CustomPainter {
       ..close();
     c.drawPath(bladeInner, white);
     c.drawLine(Offset(x + 37, y + 25 + bob), Offset(x + 47, y + 31 + bob),
-        Paint()..color = gold..strokeWidth = 3..strokeCap = StrokeCap.round);
+        Paint()..color = const Color(0xFFFFD166)..strokeWidth = 3..strokeCap = StrokeCap.round);
     c.drawLine(Offset(x + 39, y + 28 + bob), Offset(x + 34, y + 34 + bob),
         Paint()..color = outline..strokeWidth = 4..strokeCap = StrokeCap.round);
 
