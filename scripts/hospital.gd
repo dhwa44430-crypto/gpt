@@ -91,7 +91,7 @@ func _build_world() -> void:
 	env.ambient_light_color = Color("d8e4ed")
 	env.ambient_light_energy = 0.65
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env. ssao_enabled = true
+	env.ssao_enabled = true
 	env.ssil_enabled = true
 	env.tonemap_exposure = 1.0
 	env.glow_enabled = true
