@@ -45,7 +45,7 @@ class _GameScreenState extends State<GameScreen>
   int _coins = 0;
   int _lives = 3;
   double _playerX = 90;
-  double _playerY = 320;
+  double _playerY = 390;
   double _velocityX = 0;
   double _velocityY = 0;
   double _cameraX = 0;
@@ -113,7 +113,7 @@ class _GameScreenState extends State<GameScreen>
 
   void _resetLevel() {
     _playerX = 90;
-    _playerY = 320;
+    _playerY = 390;
     _velocityX = 0;
     _velocityY = 0;
     _cameraX = 0;
@@ -153,6 +153,7 @@ class _GameScreenState extends State<GameScreen>
     }
     _jumpQueued = false;
     _velocityY += 1050 * dt;
+    final previousPlayerY = _playerY;
     _playerY += _velocityY * dt;
 
     _playerX = _playerX.clamp(0.0, _level.length - 45).toDouble();
@@ -162,10 +163,10 @@ class _GameScreenState extends State<GameScreen>
     for (final platform in _level.platforms) {
       final overlaps = _playerX + 30 > platform.x &&
           _playerX + 10 < platform.x + platform.width;
-      final wasAbove = _playerY + 42 - _velocityY * dt <= platform.y + 8;
+      final wasAbove = previousPlayerY <= platform.y + 1;
       if (overlaps && _velocityY >= 0 && wasAbove &&
-          _playerY + 42 >= platform.y && _playerY + 42 <= platform.y + 28) {
-        _playerY = platform.y - 42;
+          _playerY >= platform.y && _playerY <= platform.y + 28) {
+        _playerY = platform.y;
         _velocityY = 0;
         _grounded = true;
       }
@@ -175,7 +176,7 @@ class _GameScreenState extends State<GameScreen>
       if (_collected.contains(i)) continue;
       final coin = _level.coins[i];
       if ((_playerX + 20 - coin.dx).abs() < 28 &&
-          (_playerY + 20 - coin.dy).abs() < 32) {
+          (_playerY - 40 - coin.dy).abs() < 42) {
         _collected.add(i);
         _coins++;
       }
@@ -186,8 +187,8 @@ class _GameScreenState extends State<GameScreen>
       final enemy = _level.enemies[i];
       final ex = enemy.x + math.sin(now * 1.7 + i) * enemy.range;
       final near = (_playerX + 20 - ex).abs() < 34 &&
-          (_playerY + 35 - enemy.y).abs() < 35;
-      if (near && _velocityY > 80 && _playerY + 40 < enemy.y + 18) {
+          (_playerY - 25 - enemy.y).abs() < 42;
+      if (near && _velocityY > 80 && previousPlayerY < enemy.y + 18) {
         _defeated.add(i);
         _velocityY = -270;
       } else if (near) {
@@ -223,7 +224,7 @@ class _GameScreenState extends State<GameScreen>
       });
     } else {
       _playerX = math.max(40.0, _playerX - 100).toDouble();
-      _playerY = 260;
+      _playerY = 390;
       _velocityY = 0;
       _velocityX = 0;
     }
@@ -258,7 +259,11 @@ class _GameScreenState extends State<GameScreen>
                   facingRight: _velocityX >= 0,
                   heroAtlas: _heroAtlas,
                   worldAtlas: _worldAtlas,
-                  heroFrame: !_grounded ? 4 : (_held.contains('right') || _held.contains('left') ? 1 + ((_clock.elapsedMilliseconds ~/ 130) % 3) : 0),
+                  heroFrame: !_grounded
+                      ? (_velocityY < 0 ? 12 : 13)
+                      : (_held.contains('right') || _held.contains('left')
+                          ? 6 + ((_clock.elapsedMilliseconds ~/ 110) % 6)
+                          : 0),
                 ),
               ),
             ),
@@ -604,13 +609,16 @@ class GamePainter extends CustomPainter {
   void _drawHeroSprite(Canvas c) {
     final atlas = heroAtlas;
     if (atlas == null) return;
-    const frameW = 192.0;
-    const frameH = 240.0;
-    final frame = heroFrame.clamp(0, 7);
-    final col = frame % 4;
-    final row = frame ~/ 4;
+    // The source sheet is 192x120: six columns by three animation rows.
+    // Crop exactly one 32x40 cell so adjacent poses are never drawn together.
+    const frameW = 32.0;
+    const frameH = 40.0;
+    final frame = heroFrame.clamp(0, 17);
+    final col = frame % 6;
+    final row = frame ~/ 6;
     final src = Rect.fromLTWH(col * frameW, row * frameH, frameW, frameH);
-    final dst = Rect.fromLTWH(playerX - 15, playerY - 35, 78, 96);
+    // playerY is the feet baseline; keep the sprite planted on the platform.
+    final dst = Rect.fromLTWH(playerX - 12, playerY - 82, 64, 82);
     final paint = Paint()..filterQuality = FilterQuality.high;
     c.save();
     if (!facingRight) {
