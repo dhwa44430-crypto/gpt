@@ -571,8 +571,8 @@ class GamePainter extends CustomPainter {
   void _drawHeroSprite(Canvas c) {
     final atlas = heroAtlas;
     if (atlas == null) return;
-    const frameW = 48.0;
-    const frameH = 60.0;
+    const frameW = 192.0;
+    const frameH = 240.0;
     final frame = heroFrame.clamp(0, 7);
     final col = frame % 4;
     final row = frame ~/ 4;
