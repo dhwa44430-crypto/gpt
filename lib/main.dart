@@ -571,13 +571,13 @@ class GamePainter extends CustomPainter {
   void _drawHeroSprite(Canvas c) {
     final atlas = heroAtlas;
     if (atlas == null) return;
-    const frameW = 64.0;
-    const frameH = 80.0;
+    const frameW = 48.0;
+    const frameH = 60.0;
     final frame = heroFrame.clamp(0, 7);
     final col = frame % 4;
     final row = frame ~/ 4;
     final src = Rect.fromLTWH(col * frameW, row * frameH, frameW, frameH);
-    final dst = Rect.fromLTWH(playerX - 12, playerY - 27, 64, 80);
+    final dst = Rect.fromLTWH(playerX - 15, playerY - 35, 78, 96);
     final paint = Paint()..filterQuality = FilterQuality.high;
     c.save();
     if (!facingRight) {
