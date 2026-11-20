@@ -87,7 +87,7 @@ class _CityScreenState extends State<CityScreen> {
     threeJs.scene.fog = three.Fog(0x9CC9D7, 26, 65);
     threeJs.camera = three.PerspectiveCamera(48, threeJs.width / threeJs.height, 0.1, 120);
     threeJs.camera.position.setValues(21, 24, 25);
-    threeJs.camera.lookAt(0, 0, 0);
+    threeJs.camera.lookAt(three.Vector3(0, 0, 0));
 
     threeJs.scene.add(three.AmbientLight(0xffffff, 0.72));
     final sunlight = three.DirectionalLight(0xfff2d8, 1.35)..position.setValues(-12, 25, 15);
@@ -108,7 +108,7 @@ class _CityScreenState extends State<CityScreen> {
     groundGeometry = three.BoxGeometry(0.98, 0.12, 0.98);
     createCityGround();
     createStartingCity();
-    threeJs.domElement.addEventListener(three.PeripheralType.pointerDown, onCityPointerDown);
+    threeJs.domElement.addEventListener(three.PeripheralType.pointerdown, onCityPointerDown);
     threeJs.addAnimationEvent((dt) { cameraControls.update(); });
   }
 
@@ -162,6 +162,20 @@ class _CityScreenState extends State<CityScreen> {
       block.position.setValues(x, h / 2 - 0.1, -13.2);
       threeJs.scene.add(block);
     }
+  }
+
+  void createStartingCity() {
+    for (int col = 1; col < 17; col++) {
+      setTile(9, col, Tool.road, 0, updateCounters: false);
+    }
+    for (int row = 3; row < 15; row++) {
+      if (row != 9) setTile(row, 9, Tool.road, 0, updateCounters: false);
+    }
+    setTile(8, 8, Tool.power, 1, updateCounters: false);
+    setTile(8, 7, Tool.home, 2, updateCounters: false);
+    setTile(8, 10, Tool.shop, 1, updateCounters: false);
+    setTile(10, 8, Tool.home, 1, updateCounters: false);
+    setTile(10, 10, Tool.park, 1, updateCounters: false);
   }
 
   int tileColor(int row, int col) => (row + col).isEven ? 0x82AD69 : 0x78A45F;
