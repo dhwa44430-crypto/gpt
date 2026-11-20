@@ -599,6 +599,26 @@ class GamePainter extends CustomPainter {
     _drawAtlas(c, 3, 2, Rect.fromLTWH(x - 14, 270, 76, 120));
   }
 
+  void _drawHeroSprite(Canvas c) {
+    final atlas = heroAtlas;
+    if (atlas == null) return;
+    const frameW = 192.0;
+    const frameH = 240.0;
+    final frame = heroFrame.clamp(0, 7);
+    final col = frame % 4;
+    final row = frame ~/ 4;
+    final src = Rect.fromLTWH(col * frameW, row * frameH, frameW, frameH);
+    final dst = Rect.fromLTWH(playerX - 15, playerY - 35, 78, 96);
+    final paint = Paint()..filterQuality = FilterQuality.high;
+    c.save();
+    if (!facingRight) {
+      c.translate(playerX * 2 + 40, 0);
+      c.scale(-1, 1);
+    }
+    c.drawImageRect(atlas, src, dst, paint);
+    c.restore();
+  }
+
   void _rect(Canvas c, double x, double y, double w, double h, Color color) {
     c.drawRect(Rect.fromLTWH(x, y, w, h), Paint()..color = color);
   }
