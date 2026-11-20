@@ -54,12 +54,12 @@ if not frames:
     sys.exit(2)
 
 aliases = {
- 'hero_idle': ['platformchar_idle','player_idle','character_idle','oopi_idle','idle'],
- 'hero_run': ['platformchar_walk1','platformchar_run1','player_run','walk1','walk_1','run1','walk'],
- 'hero_run2': ['platformchar_walk2','platformchar_run2','walk2','walk_2','run2'],
- 'hero_jump': ['platformchar_jump','player_jump','jump'],
- 'hero_hurt': ['platformchar_hurt','player_hurt','hurt','fall','dead'],
- 'hero_crouch': ['crouch','duck'],
+ 'hero_idle': ['character_beige_idle','platformchar_idle','player_idle','character_idle','oopi_idle','character_beige','idle'],
+ 'hero_run': ['character_beige_walk_a','character_beige_walk1','character_beige_run','platformchar_walk1','platformchar_run1','player_run','character_beige','walk1','walk_1','run1','walk'],
+ 'hero_run2': ['character_beige_walk_b','character_beige_walk2','character_beige_run2','platformchar_walk2','platformchar_run2','character_beige','walk2','walk_2','run2'],
+ 'hero_jump': ['character_beige_jump','platformchar_jump','player_jump','character_beige','jump'],
+ 'hero_hurt': ['character_beige_hurt','character_beige_fall','platformchar_hurt','player_hurt','character_beige','hurt','fall','dead'],
+ 'hero_crouch': ['character_beige_duck','character_beige_crouch','crouch','duck'],
  'enemy_slime': ['slime','platformenemy_walk1','enemy_walk1','enemy_idle','enemy'],
  'enemy_spike': ['spike','platformenemy_walk2','enemy_walk2'],
  'enemy_butterfly': ['butterfly','moth','fly'],
@@ -71,7 +71,7 @@ aliases = {
  'checkpoint': ['checkpoint','flag'],
  'spring': ['spring'],
  'treasure': ['treasure','chest'],
- 'tree': ['tree'], 'pine': ['pine'], 'bush': ['bush'], 'flowers': ['flower'], 'rock': ['rock'],
+ 'tree': ['tree'], 'pine': ['pine','bush','tree'], 'bush': ['bush'], 'flowers': ['flower'], 'rock': ['rock'],
  'cloud': ['cloud'], 'background_hills': ['hills','mountain','background'],
  'bridge': ['bridge'], 'platform_grass': ['grass','ground','platform'], 'platform_stone': ['stone','rock','brick'],
  'platform_column': ['column','cliff','wall'],
