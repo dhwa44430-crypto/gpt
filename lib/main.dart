@@ -260,9 +260,9 @@ class _GameScreenState extends State<GameScreen>
                   heroAtlas: _heroAtlas,
                   worldAtlas: _worldAtlas,
                   heroFrame: !_grounded
-                      ? (_velocityY < 0 ? 12 : 13)
+                      ? (_velocityY < 0 ? 4 : 5)
                       : (_held.contains('right') || _held.contains('left')
-                          ? 6 + ((_clock.elapsedMilliseconds ~/ 110) % 6)
+                          ? 1 + ((_clock.elapsedMilliseconds ~/ 150) % 3)
                           : 0),
                 ),
               ),
@@ -609,20 +609,34 @@ class GamePainter extends CustomPainter {
   void _drawHeroSprite(Canvas c) {
     final atlas = heroAtlas;
     if (atlas == null) return;
-    // The source sheet is 192x120: six columns by three animation rows.
-    // Crop exactly one 32x40 cell so adjacent poses are never drawn together.
-    const frameW = 32.0;
-    const frameH = 40.0;
-    final frame = heroFrame.clamp(0, 17);
-    final col = frame % 6;
-    final row = frame ~/ 6;
-    final src = Rect.fromLTWH(col * frameW, row * frameH, frameW, frameH);
-    // playerY is the feet baseline; keep the sprite planted on the platform.
-    final dst = Rect.fromLTWH(playerX - 12, playerY - 82, 64, 82);
-    final paint = Paint()..filterQuality = FilterQuality.high;
+
+    // The actual 192x120 sheet contains 3 columns x 2 rows.
+    // Each complete animation frame is exactly 64x60 pixels.
+    const frameW = 64.0;
+    const frameH = 60.0;
+    const columns = 3;
+    const rows = 2;
+    final frame = heroFrame.clamp(0, columns * rows - 1);
+    final col = frame % columns;
+    final row = frame ~/ columns;
+    final src = Rect.fromLTWH(
+      col * frameW,
+      row * frameH,
+      frameW,
+      frameH,
+    );
+
+    // Draw at the source frame's native resolution: no enlargement blur,
+    // no neighboring characters, and the bottom edge sits on the ground.
+    final dst = Rect.fromLTWH(playerX - 16, playerY - frameH, frameW, frameH);
+    final paint = Paint()
+      ..filterQuality = FilterQuality.none
+      ..isAntiAlias = false;
+
     c.save();
     if (!facingRight) {
-      c.translate(playerX * 2 + 40, 0);
+      final centerX = playerX + frameW / 2 - 16;
+      c.translate(centerX * 2, 0);
       c.scale(-1, 1);
     }
     c.drawImageRect(atlas, src, dst, paint);
