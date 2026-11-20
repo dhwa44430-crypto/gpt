@@ -32,8 +32,8 @@ jobs:
           curl -fL --retry 3 https://tevy.dev/models/road-worker/v1/lod1.glb -o assets/models/doctor.glb
           # Decode Meshopt-compressed GLB geometry for Godot glTF import.
           for model in assets/models/*.glb; do
-            gltf-transform optimize "$model" "\${model%.glb}-godot.glb" --compress false --texture-compress false --flatten false --join false --prune false --resample false
-            mv "\${model%.glb}-godot.glb" "$model"
+            gltf-transform optimize "$model" "${model%.glb}-godot.glb" --compress false --texture-compress false --flatten false --join false --prune false --resample false
+            mv "${model%.glb}-godot.glb" "$model"
           done
           cat > assets/models/ASSET_LICENSES.txt <<'EOF'
           Hospital Ward, Operating Theatre, Hospital Corridor Straight, Ambulance, Hospital Building,
