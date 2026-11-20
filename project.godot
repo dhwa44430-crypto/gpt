@@ -1,10 +1,10 @@
 config_version=5
 
 [application]
-config/name="Hospital Simulator"
+config/name="Anime Platform Adventure"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.4", "GL Compatibility")
-config/description="3D top-down hospital management simulator"
+config/description="A colorful anime platform adventure"
 
 [display]
 window/size/viewport_width=1280
@@ -12,9 +12,22 @@ window/size/viewport_height=720
 window/handheld/orientation=1
 window/stretch/mode="canvas_items"
 
+[input]
+move_left={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":65), Object(InputEventKey,"physical_keycode":4194311)]
+}
+move_right={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":68), Object(InputEventKey,"physical_keycode":4194313)]
+}
+jump={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":32), Object(InputEventKey,"physical_keycode":4194309)]
+}
+
 [rendering]
-textures/vram_compression/import_etc2_astc=true
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
-textures/default_filters/use_nearest_mipmap_filter=false
-environment/defaults/default_clear_color=Color(0.07, 0.09, 0.11, 1)
+textures/vram_compression/import_etc2_astc=true
+environment/defaults/default_clear_color=Color(0.42, 0.78, 0.96, 1)

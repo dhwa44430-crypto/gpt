@@ -1,7 +1,7 @@
-name: Build Hospital Simulator Android APK
+name: Build Anime Platform Adventure Android APK
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,137 +13,52 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - name: Install download tools
+      - name: Download original anime hero and world sprite sheets
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends curl ca-certificates xz-utils
-          curl -fL --retry 3 https://nodejs.org/dist/v22.15.0/node-v22.15.0-linux-x64.tar.xz -o /tmp/node.tar.xz
-          mkdir -p /opt/node22
-          tar -xJf /tmp/node.tar.xz -C /opt/node22 --strip-components=1
-          echo "/opt/node22/bin" >> "$GITHUB_PATH"
-          export PATH="/opt/node22/bin:$PATH"
-          node --version
-          npm --version
-          npm install --global @gltf-transform/cli@4.2.1
-      - name: Download real CC0 hospital and people models
-        run: |
-          mkdir -p assets/models
-          curl -fL --retry 3 https://tevy.dev/models/hospital-ward/v2/lod0.glb -o assets/models/hospital_ward.glb
-          curl -fL --retry 3 https://tevy.dev/models/operating-theatre/v2/lod0.glb -o assets/models/operating_theatre.glb
-          curl -fL --retry 3 https://tevy.dev/models/hospital-corridor-straight/v1/lod0.glb -o assets/models/hospital_corridor.glb
-          curl -fL --retry 3 https://tevy.dev/models/ambulance/v1/lod0.glb -o assets/models/ambulance.glb
-          curl -fL --retry 3 https://tevy.dev/models/hospital-building/v2/lod1.glb -o assets/models/hospital_exterior.glb
-          curl -fL --retry 3 https://tevy.dev/models/casual-walker/v1/lod1.glb -o assets/models/patient_male.glb
-          curl -fL --retry 3 https://tevy.dev/models/cyclist/v1/lod1.glb -o assets/models/patient_female.glb
-          curl -fL --retry 3 https://tevy.dev/models/hiker/v1/lod1.glb -o assets/models/nurse.glb
-          curl -fL --retry 3 https://tevy.dev/models/road-worker/v1/lod1.glb -o assets/models/doctor.glb
-          # Decode Meshopt-compressed GLB geometry for Godot glTF import.
-          for model in assets/models/*.glb; do
-            # Godot 4.4.1 does not support KHR_mesh_quantization in these source assets.
-            gltf-transform dequantize "$model" "${model%.glb}-dequantized.glb"
-            gltf-transform optimize "${model%.glb}-dequantized.glb" "${model%.glb}-godot.glb" --compress false --texture-compress false --flatten false --join false --prune false --resample false
-            mv "${model%.glb}-godot.glb" "$model"
-            rm -f "${model%.glb}-dequantized.glb"
-          done
-          cat > assets/models/ASSET_LICENSES.txt <<'EOF'
-          Hospital Ward, Operating Theatre, Hospital Corridor Straight, Ambulance, Hospital Building,
-          Casual Walker, Cyclist, Hiker and Road Worker.
-          Source: https://tevy.dev/
-          License: CC0 1.0 Universal. Free for commercial and non-commercial use.
-          Character models are general human models used as visual placeholders for hospital roles.
-          Asset versions and download URLs are pinned in .github/workflows/build.yml.
-          EOF
-          ls -lh assets/models
+          mkdir -p assets/images/hero assets/images/world
+          curl -fL --retry 3 https://raw.githubusercontent.com/dhwa44430-crypto/gpt/afebc9e832893662906c69b28424833887daec3f/assets/images/hero/hero_spritesheet.webp -o assets/images/hero/hero_spritesheet.webp
+          curl -fL --retry 3 https://raw.githubusercontent.com/dhwa44430-crypto/gpt/afebc9e832893662906c69b28424833887daec3f/assets/images/world/world_atlas.webp -o assets/images/world/world_atlas.webp
+          test -s assets/images/hero/hero_spritesheet.webp
+          test -s assets/images/world/world_atlas.webp
       - name: Install Android export requirements
         run: |
           apt-get update
           apt-get install -y --no-install-recommends openjdk-17-jdk unzip
           export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
           export PATH="$JAVA_HOME/bin:$PATH"
-          echo "JAVA_HOME=$JAVA_HOME"
-          java -version
-          # Find the Android SDK already bundled in the Godot CI image.
           ADB_PATH="$(find / -type f -path '*/platform-tools/adb' 2>/dev/null | head -n 1)"
-          if [ -z "$ADB_PATH" ]; then
-            echo "Android SDK platform-tools/adb was not found in the build image."
-            exit 1
-          fi
+          if [ -z "$ADB_PATH" ]; then echo "Android SDK adb not found"; exit 1; fi
           ANDROID_HOME="$(dirname "$(dirname "$ADB_PATH")")"
-          export ANDROID_HOME
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          # Godot reads Android SDK/JDK locations from EditorSettings, not only
-          # from environment variables. Persist both paths for import and export.
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager 2>/dev/null | head -n 1)"
+          if [ -z "$SDKMANAGER" ]; then echo "Android SDK sdkmanager not found"; exit 1; fi
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
           export HOME=/github/home
-          GODOT_CONFIG_DIR="$HOME/.config/godot"
-          mkdir -p "$GODOT_CONFIG_DIR"
-          cat > "$GODOT_CONFIG_DIR/editor_settings-4.4.tres" <<EOF
+          mkdir -p "$HOME/.config/godot" "$HOME/.local/share/godot/export_templates/4.4.1.stable" "$HOME/.android" /tmp/godot-templates/unpacked
+          cat > "$HOME/.config/godot/editor_settings-4.4.tres" <<EOF
           [gd_resource type="EditorSettings" format=3]
-
           [resource]
           export/android/android_sdk_path = "$ANDROID_HOME"
           export/android/java_sdk_path = "$JAVA_HOME"
           EOF
-          echo "Godot Android SDK path: $ANDROID_HOME"
-          echo "Godot Java SDK path: $JAVA_HOME"
-          test -x "$ADB_PATH"
-          # Install Android SDK platforms and build-tools required by Godot 4.4.1.
-          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager 2>/dev/null | head -n 1)"
-          if [ -z "$SDKMANAGER" ]; then
-            echo "Android SDK sdkmanager was not found under $ANDROID_HOME/cmdline-tools."
-            find "$ANDROID_HOME" -maxdepth 4 -type f | head -n 80
-            exit 1
-          fi
-          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
-          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install \
-            "platform-tools" \
-            "platforms;android-34" \
-            "build-tools;33.0.2" \
-            "build-tools;34.0.0"
-          test -d "$ANDROID_HOME/platforms/android-34"
-          test -d "$ANDROID_HOME/build-tools/33.0.2"
-          test -d "$ANDROID_HOME/build-tools/34.0.0"
-          echo "Android SDK platforms and build-tools are installed."
-          # Install the exact Godot 4.4.1 export templates, including android_source.zip.
-          # Use the same HOME Godot reports in its export-template diagnostics.
-          export HOME=/github/home
+          curl -fL --retry 3 https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz -o /tmp/templates.tpz
+          unzip -q /tmp/templates.tpz -d /tmp/godot-templates/unpacked
           TEMPLATE_DIR="$HOME/.local/share/godot/export_templates/4.4.1.stable"
-          mkdir -p /tmp/godot-templates "$TEMPLATE_DIR" "$HOME/.android"
-          curl -fL --retry 3 https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz -o /tmp/godot-templates/templates.tpz
-          unzip -q /tmp/godot-templates/templates.tpz -d /tmp/godot-templates/unpacked
-          # Locate the actual archive entry instead of assuming the TPZ folder layout.
           ANDROID_TEMPLATE="$(find /tmp/godot-templates/unpacked -type f -name android_source.zip | head -n 1)"
-          if [ -z "$ANDROID_TEMPLATE" ]; then
-            echo "android_source.zip was not present in the official Godot 4.4.1 templates archive."
-            find /tmp/godot-templates/unpacked -maxdepth 3 -type f | head -n 30
-            exit 1
-          fi
+          test -n "$ANDROID_TEMPLATE"
           cp "$ANDROID_TEMPLATE" "$TEMPLATE_DIR/android_source.zip"
-          for template in android_debug.apk android_release.apk; do
-            TEMPLATE_FILE="$(find /tmp/godot-templates/unpacked -type f -name "$template" | head -n 1)"
-            if [ -n "$TEMPLATE_FILE" ]; then cp "$TEMPLATE_FILE" "$TEMPLATE_DIR/$template"; fi
+          for f in android_debug.apk android_release.apk version.txt; do
+            SOURCE="$(find /tmp/godot-templates/unpacked -type f -name "$f" | head -n 1)"
+            if [ -n "$SOURCE" ]; then cp "$SOURCE" "$TEMPLATE_DIR/$f"; fi
           done
-          # Godot validates the template version using this adjacent version.txt file.
-          TEMPLATE_VERSION_FILE="$(find /tmp/godot-templates/unpacked -type f -name version.txt | head -n 1)"
-          if [ -n "$TEMPLATE_VERSION_FILE" ]; then
-            cp "$TEMPLATE_VERSION_FILE" "$TEMPLATE_DIR/version.txt"
-          else
-            printf '4.4.1.stable\n' > "$TEMPLATE_DIR/version.txt"
-          fi
+          if [ ! -f "$TEMPLATE_DIR/version.txt" ]; then printf '4.4.1.stable\n' > "$TEMPLATE_DIR/version.txt"; fi
           test "$(tr -d '\r\n' < "$TEMPLATE_DIR/version.txt")" = "4.4.1.stable"
-          ls -lh "$TEMPLATE_DIR"
-          test -s "$TEMPLATE_DIR/android_source.zip"
           keytool -genkeypair -noprompt -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
-          export GODOT_ANDROID_KEYSTORE_DEBUG_PATH="$HOME/.android/debug.keystore"
-          export GODOT_ANDROID_KEYSTORE_DEBUG_USER="androiddebugkey"
-          export GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD="android"
           echo "Android export prerequisites installed."
       - name: Import Godot project
         run: |
           export HOME=/github/home
           export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
-          export PATH="$JAVA_HOME/bin:$PATH"
-          ADB_PATH="$(find / -type f -path '*/platform-tools/adb' 2>/dev/null | head -n 1)"
-          export ANDROID_HOME="$(dirname "$(dirname "$ADB_PATH")")"
           godot --headless --editor --path . --import
       - name: Export Android APK
         run: |
@@ -154,30 +69,15 @@ jobs:
           export PATH="$JAVA_HOME/bin:$PATH"
           ADB_PATH="$(find / -type f -path '*/platform-tools/adb' 2>/dev/null | head -n 1)"
           export ANDROID_HOME="$(dirname "$(dirname "$ADB_PATH")")"
-          # Recreate Godot editor settings in the exact XDG config directory used by this process.
-          mkdir -p "$XDG_CONFIG_HOME/godot"
-          cat > "$XDG_CONFIG_HOME/godot/editor_settings-4.4.tres" <<EOF
-          [gd_resource type="EditorSettings" format=3]
-          [resource]
-          export/android/android_sdk_path = "$ANDROID_HOME"
-          export/android/java_sdk_path = "$JAVA_HOME"
-          EOF
-          echo "===== Godot Android editor settings ====="
-          cat "$XDG_CONFIG_HOME/godot/editor_settings-4.4.tres"
-          test -x "$JAVA_HOME/bin/java"
-          test -x "$ANDROID_HOME/platform-tools/adb"
-          test -d "$ANDROID_HOME/platforms/android-34"
-          test -d "$ANDROID_HOME/build-tools/34.0.0"
-          test -s "$XDG_DATA_HOME/godot/export_templates/4.4.1.stable/android_source.zip"
           export GODOT_ANDROID_KEYSTORE_DEBUG_PATH="$HOME/.android/debug.keystore"
           export GODOT_ANDROID_KEYSTORE_DEBUG_USER="androiddebugkey"
           export GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD="android"
           mkdir -p build
           godot --headless --editor --path . --quit --verbose
-          godot --headless --path . --export-debug "Android" build/HospitalSimulator.apk
+          godot --headless --path . --export-debug "Android" build/AnimePlatformAdventure.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: hospital-simulator-android
-          path: build/HospitalSimulator.apk
+          name: anime-platform-adventure-android
+          path: build/AnimePlatformAdventure.apk
           if-no-files-found: error
           retention-days: 14

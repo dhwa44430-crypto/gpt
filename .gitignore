@@ -2,7 +2,4 @@
 .import/
 .export/
 build/
-*.apk
-*.aab
-*.keystore
-*.jks
+*.tmp
