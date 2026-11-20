@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 Future<void> main() async {
@@ -23,6 +24,27 @@ class AdventureApp extends StatelessWidget {
   );
 }
 
+const double groundY = 390;
+const double gameHeroW = 76;
+const double gameHeroH = 96;
+const double gameWorldW = 4300;
+const List<Rect> gamePlatforms = [
+  Rect.fromLTWH(0,390,760,120), Rect.fromLTWH(820,390,520,120),
+  Rect.fromLTWH(1400,390,690,120), Rect.fromLTWH(2150,390,520,120),
+  Rect.fromLTWH(2730,390,690,120), Rect.fromLTWH(3480,390,820,120),
+  Rect.fromLTWH(350,285,190,70), Rect.fromLTWH(610,220,180,70),
+  Rect.fromLTWH(1030,290,190,70), Rect.fromLTWH(1260,225,180,70),
+  Rect.fromLTWH(1660,285,200,70), Rect.fromLTWH(1900,215,190,70),
+  Rect.fromLTWH(2370,285,180,70), Rect.fromLTWH(2580,220,190,70),
+  Rect.fromLTWH(3000,280,200,70), Rect.fromLTWH(3250,210,190,70),
+  Rect.fromLTWH(3700,290,180,70),
+];
+const List<double> coinXs = [
+  210,390,445,650,700,910,1080,1130,1320,1510,1710,1770,1940,2010,
+  2250,2430,2630,2820,3050,3120,3290,3550,3790,3890,4050,
+];
+const List<double> enemyXs = [900,1510,1860,2260,2860,3190,3570];
+
 class AdventureScreen extends StatefulWidget {
   const AdventureScreen({super.key});
   @override
@@ -42,23 +64,7 @@ class _AdventureScreenState extends State<AdventureScreen>
   final Set<int> collected = {};
   final Set<int> defeated = {};
 
-  static const double ground = 390, heroW = 76, heroH = 96, worldW = 4300;
-  static const List<Rect> platforms = [
-    Rect.fromLTWH(0,390,760,120), Rect.fromLTWH(820,390,520,120),
-    Rect.fromLTWH(1400,390,690,120), Rect.fromLTWH(2150,390,520,120),
-    Rect.fromLTWH(2730,390,690,120), Rect.fromLTWH(3480,390,820,120),
-    Rect.fromLTWH(350,285,190,70), Rect.fromLTWH(610,220,180,70),
-    Rect.fromLTWH(1030,290,190,70), Rect.fromLTWH(1260,225,180,70),
-    Rect.fromLTWH(1660,285,200,70), Rect.fromLTWH(1900,215,190,70),
-    Rect.fromLTWH(2370,285,180,70), Rect.fromLTWH(2580,220,190,70),
-    Rect.fromLTWH(3000,280,200,70), Rect.fromLTWH(3250,210,190,70),
-    Rect.fromLTWH(3700,290,180,70),
-  ];
-  static const List<double> coinXs = [
-    210,390,445,650,700,910,1080,1130,1320,1510,1710,1770,1940,2010,
-    2250,2430,2630,2820,3050,3120,3290,3550,3790,3890,4050,
-  ];
-  static const List<double> enemyXs = [900,1510,1860,2260,2860,3190,3570];
+  static const double ground = groundY, heroW = gameHeroW, heroH = gameHeroH, worldW = gameWorldW;
 
   @override
   void initState() {
@@ -113,7 +119,7 @@ class _AdventureScreenState extends State<AdventureScreen>
     vy += 1900 * dt;
     playerY += vy * dt;
     onGround = false;
-    for (final p in platforms) {
+    for (final p in gamePlatforms) {
       if (playerX + heroW - 12 > p.left && playerX + 12 < p.right &&
           vy >= 0 && oldBottom <= p.top + 14 && playerY + heroH >= p.top) {
         playerY = p.top - heroH;
@@ -238,10 +244,7 @@ class AdventurePainter extends CustomPainter {
   final bool onGround,facingRight;
   final Set<int> collected,defeated;
 
-  static const platforms=AdventureScreen.platforms;
-  static const coinXs=AdventureScreen.coinXs;
-  static const enemyXs=AdventureScreen.enemyXs;
-
+  
   @override
   void paint(Canvas canvas,Size size) {
     final sx=size.width/900, sy=size.height/480;
@@ -261,7 +264,7 @@ class AdventurePainter extends CustomPainter {
       _image(canvas,x.toInt().isEven?'tree':'pine',Rect.fromLTWH(x-camera,groundY-165,145,165));
     }
 
-    for(final p in platforms) {
+    for(final p in gamePlatforms) {
       final key=p.top>=380?'platform_grass':'platform_stone';
       for(double x=p.left;x<p.right;x+=128) {
         final w=math.min(128.0,p.right-x);
