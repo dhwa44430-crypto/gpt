@@ -1,4 +1,4 @@
-name: Build Adventure Game Android APK
+name: Build Hospital Simulator Android APK
 on:
   push:
     branches: [ "main" ]
@@ -8,33 +8,20 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    container:
+      image: barichello/godot-ci:4.4.1
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-      - name: Generate Android project files
-        run: flutter create --platforms=android --project-name layth_adventure .
-      - name: Remove generated starter test
-        run: rm -f test/widget_test.dart
-      - name: Download original CC0 platformer art pack
+      - name: Import Godot project
+        run: godot --headless --editor --path . --import
+      - name: Export Android APK
         run: |
-          mkdir -p third_party/kenney
-          curl -L --fail --retry 3 'https://raw.githubusercontent.com/bill2432/kenney-2d-mirror/main/packs/new-platformer-pack.zip' -o /tmp/kenney-platformer.zip
-          unzip -q /tmp/kenney-platformer.zip -d third_party/kenney
-          python3 -m pip install --quiet pillow
-          python3 tool/extract_assets.py
-      - name: Install Flutter dependencies
-        run: flutter pub get
-      - name: Analyze source
-        run: flutter analyze --no-fatal-infos
-      - name: Build release APK
-        run: flutter build apk --release
+          mkdir -p build
+          godot --headless --path . --export-debug "Android" build/HospitalSimulator.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: layth-adventure-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: hospital-simulator-android
+          path: build/HospitalSimulator.apk
           if-no-files-found: error
           retention-days: 14
