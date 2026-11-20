@@ -58,6 +58,7 @@ class _GameScreenState extends State<GameScreen>
   final Set<int> _collected = <int>{};
   final Set<int> _defeated = <int>{};
   ui.Image? _heroAtlas;
+  ui.Image? _worldAtlas;
 
   Future<void> _loadHeroAtlas() async {
     final data = await DefaultAssetBundle.of(context).load('assets/images/hero/hero_spritesheet.webp');
@@ -65,6 +66,14 @@ class _GameScreenState extends State<GameScreen>
     final frame = await codec.getNextFrame();
     if (!mounted) { frame.image.dispose(); return; }
     setState(() => _heroAtlas = frame.image);
+  }
+
+  Future<void> _loadWorldAtlas() async {
+    final data = await DefaultAssetBundle.of(context).load('assets/images/world/world_atlas.webp');
+    final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+    final frame = await codec.getNextFrame();
+    if (!mounted) { frame.image.dispose(); return; }
+    setState(() => _worldAtlas = frame.image);
   }
 
   LevelData get _level => _levels[_levelIndex];
@@ -78,12 +87,16 @@ class _GameScreenState extends State<GameScreen>
     )..addListener(_tick);
     _ticker.repeat();
     _clock.start();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadHeroAtlas());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadHeroAtlas();
+      _loadWorldAtlas();
+    });
   }
 
   @override
   void dispose() {
     _heroAtlas?.dispose();
+    _worldAtlas?.dispose();
     _ticker.dispose();
     _clock.stop();
     super.dispose();
@@ -244,6 +257,7 @@ class _GameScreenState extends State<GameScreen>
                   time: _clock.elapsedMilliseconds / 1000,
                   facingRight: _velocityX >= 0,
                   heroAtlas: _heroAtlas,
+                  worldAtlas: _worldAtlas,
                   heroFrame: !_grounded ? 4 : (_held.contains('right') || _held.contains('left') ? 1 + ((_clock.elapsedMilliseconds ~/ 130) % 3) : 0),
                 ),
               ),
@@ -484,6 +498,7 @@ class GamePainter extends CustomPainter {
     required this.time,
     required this.facingRight,
     required this.heroAtlas,
+    required this.worldAtlas,
     required this.heroFrame,
   });
 
@@ -491,6 +506,7 @@ class GamePainter extends CustomPainter {
   final double playerX, playerY, cameraX, time;
   final bool facingRight;
   final ui.Image? heroAtlas;
+  final ui.Image? worldAtlas;
   final int heroFrame;
   final Set<int> coins, defeated;
 
@@ -524,112 +540,63 @@ class GamePainter extends CustomPainter {
     canvas.restore();
   }
 
-  void _background(Canvas c, double width) {
-    final paint = Paint();
-    for (var x = -((cameraX * .22) % 360) - 100; x < width + 360; x += 360) {
-      if (level.decor == 0) {
-        paint.color = const Color(0xFFDAF4D5).withValues(alpha: .8);
-        c.drawCircle(Offset(x + 90, 105), 42, paint);
-        c.drawCircle(Offset(x + 130, 110), 32, paint);
-        paint.color = const Color(0xFF4EAA73);
-        c.drawOval(Rect.fromLTWH(x + 20, 330, 210, 100), paint);
-        _tree(c, x + 230, 330, const Color(0xFF237D52));
-      } else if (level.decor == 1) {
-        paint.color = const Color(0xFFFFE2A5);
-        c.drawCircle(Offset(x + 220, 100), 45, paint);
-        paint.color = const Color(0xFFD69B55);
-        final path = Path()..moveTo(x, 385)..lineTo(x + 160, 220)..lineTo(x + 320, 385)..close();
-        c.drawPath(path, paint);
-        paint.color = const Color(0xFFE6B56D);
-        final p2 = Path()..moveTo(x + 180, 390)..lineTo(x + 300, 270)..lineTo(x + 420, 390)..close();
-        c.drawPath(p2, paint);
-        _cactus(c, x + 90, 340);
-      } else {
-        paint.color = const Color(0xFFDDEEFF);
-        final path = Path()..moveTo(x, 390)..lineTo(x + 170, 150)..lineTo(x + 340, 390)..close();
-        c.drawPath(path, paint);
-        paint.color = Colors.white;
-        final cap = Path()..moveTo(x + 130, 208)..lineTo(x + 170, 150)..lineTo(x + 210, 208)..lineTo(x + 170, 195)..close();
-        c.drawPath(cap, paint);
-        for (var j = 0; j < 5; j++) {
-          final sx = x + 40 + j * 67;
-          c.drawCircle(Offset(sx, 70 + (j % 2) * 80), 2.5, Paint()..color = Colors.white70);
-        }
-      }
-    }
-  }
+  static const double _cellW = 64.0;
+  static const double _cellH = 42.75;
 
-  void _platform(Canvas c, PlatformData p) {
-    _rect(c, p.x, p.y, p.width, 60, level.ground);
-    _rect(c, p.x, p.y, p.width, 10, level.decor == 2 ? Colors.white : const Color(0xFF75D66B));
-    final paint = Paint()..color = Colors.black.withValues(alpha: .10);
-    for (double x = p.x + 12; x < p.x + p.width; x += 34) {
-      c.drawRect(Rect.fromLTWH(x, p.y + 24, 17, 8), paint);
-    }
-  }
-
-  void _drawHeroSprite(Canvas c) {
-    final atlas = heroAtlas;
+  void _drawAtlas(Canvas c, int col, int row, Rect dst, {bool flip = false}) {
+    final atlas = worldAtlas;
     if (atlas == null) return;
-    const frameW = 192.0;
-    const frameH = 240.0;
-    final frame = heroFrame.clamp(0, 7);
-    final col = frame % 4;
-    final row = frame ~/ 4;
-    final src = Rect.fromLTWH(col * frameW, row * frameH, frameW, frameH);
-    final dst = Rect.fromLTWH(playerX - 15, playerY - 35, 78, 96);
+    final src = Rect.fromLTWH(col * _cellW, row * _cellH, _cellW, _cellH);
     final paint = Paint()..filterQuality = FilterQuality.high;
     c.save();
-    if (!facingRight) {
-      c.translate(playerX * 2 + 40, 0);
+    if (flip) {
+      c.translate(dst.left * 2 + dst.width, 0);
       c.scale(-1, 1);
     }
     c.drawImageRect(atlas, src, dst, paint);
     c.restore();
   }
 
+  void _background(Canvas c, double width) {
+    const panelWidth = 675.0;
+    final offset = -((cameraX * .22) % panelWidth);
+    for (double x = offset - panelWidth; x < width + panelWidth; x += panelWidth) {
+      _drawAtlas(c, level.decor, 0, Rect.fromLTWH(x, 0, panelWidth, 450));
+      if (level.decor == 0) {
+        _drawAtlas(c, 0, 3, Rect.fromLTWH(x + 275, 275, 112, 150));
+      } else if (level.decor == 1) {
+        _drawAtlas(c, 1, 3, Rect.fromLTWH(x + 300, 315, 72, 110));
+      } else {
+        _drawAtlas(c, 2, 3, Rect.fromLTWH(x + 290, 265, 110, 160));
+      }
+      _drawAtlas(c, 3, 3, Rect.fromLTWH(x + 35, 355, 95, 65));
+    }
+  }
+
+  void _platform(Canvas c, PlatformData p) {
+    final col = level.decor == 0 ? 3 : level.decor == 1 ? 0 : 1;
+    final row = level.decor == 2 ? 1 : 0;
+    for (double x = p.x; x < p.x + p.width; x += 96) {
+      final w = math.min(96.0, p.x + p.width - x);
+      _drawAtlas(c, col, row, Rect.fromLTWH(x, p.y, w, 60));
+    }
+  }
+
   void _enemy(Canvas c, double x, double y, double t) {
-    final shell = Paint()..color = const Color(0xFF8A4BC2);
-    final white = Paint()..color = Colors.white;
-    final black = Paint()..color = const Color(0xFF25223C);
-    c.drawOval(Rect.fromLTWH(x, y + 4, 34, 27), shell);
-    c.drawCircle(Offset(x + 11, y + 14), 5, white);
-    c.drawCircle(Offset(x + 24, y + 14), 5, white);
-    c.drawCircle(Offset(x + 12, y + 15), 2, black);
-    c.drawCircle(Offset(x + 23, y + 15), 2, black);
-    c.drawOval(Rect.fromLTWH(x + 5, y + 27, 9, 5), black);
-    c.drawOval(Rect.fromLTWH(x + 22, y + 27, 9, 5), black);
+    final col = level.decor == 0 ? 2 : level.decor == 1 ? 3 : 0;
+    final row = level.decor == 2 ? 2 : 1;
+    _drawAtlas(c, col, row, Rect.fromLTWH(x - 9, y - 14, 54, 48),
+        flip: math.sin(t * 1.7) < 0);
   }
 
   void _coin(Canvas c, CoinData coin, double t) {
-    final pulse = .75 + .25 * math.sin(t * 6 + coin.dx);
-    c.drawOval(Rect.fromCenter(center: Offset(coin.dx, coin.dy), width: 17 * pulse, height: 23),
-        Paint()..color = const Color(0xFFFFD447));
-    c.drawOval(Rect.fromCenter(center: Offset(coin.dx - 2, coin.dy - 1), width: 5 * pulse, height: 15),
-        Paint()..color = const Color(0xFFFFF0A6));
+    final pulse = .82 + .18 * math.sin(t * 6 + coin.dx);
+    _drawAtlas(c, 1, 2,
+        Rect.fromCenter(center: Offset(coin.dx, coin.dy), width: 30 * pulse, height: 34));
   }
 
   void _goal(Canvas c, double x) {
-    _rect(c, x, 220, 5, 170, const Color(0xFFEEF4F8));
-    final flag = Path()..moveTo(x + 5, 222)..lineTo(x + 55, 240)..lineTo(x + 5, 260)..close();
-    c.drawPath(flag, Paint()..color = const Color(0xFFFFD166));
-    c.drawCircle(Offset(x + 2, 218), 7, Paint()..color = const Color(0xFFFFD166));
-  }
-
-  void _tree(Canvas c, double x, double y, Color color) {
-    _rect(c, x + 20, y - 65, 12, 65, const Color(0xFF80502D));
-    c.drawCircle(Offset(x + 26, y - 72), 32, Paint()..color = color);
-    c.drawCircle(Offset(x + 7, y - 57), 20, Paint()..color = color);
-    c.drawCircle(Offset(x + 44, y - 55), 21, Paint()..color = color);
-  }
-
-  void _cactus(Canvas c, double x, double y) {
-    final p = Paint()..color = const Color(0xFF3C8D54);
-    c.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(x, y - 65, 18, 65), const Radius.circular(8)), p);
-    c.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(x - 14, y - 42, 15, 10), const Radius.circular(5)), p);
-    c.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(x - 14, y - 55, 10, 24), const Radius.circular(5)), p);
-    c.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(x + 16, y - 34, 15, 10), const Radius.circular(5)), p);
-    c.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(x + 21, y - 48, 10, 24), const Radius.circular(5)), p);
+    _drawAtlas(c, 3, 2, Rect.fromLTWH(x - 14, 270, 76, 120));
   }
 
   void _rect(Canvas c, double x, double y, double w, double h, Color color) {
