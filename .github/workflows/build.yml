@@ -16,7 +16,14 @@ jobs:
       - name: Install download tools
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends curl ca-certificates nodejs npm
+          apt-get install -y --no-install-recommends curl ca-certificates xz-utils
+          curl -fL --retry 3 https://nodejs.org/dist/v22.15.0/node-v22.15.0-linux-x64.tar.xz -o /tmp/node.tar.xz
+          mkdir -p /opt/node22
+          tar -xJf /tmp/node.tar.xz -C /opt/node22 --strip-components=1
+          echo "/opt/node22/bin" >> "$GITHUB_PATH"
+          export PATH="/opt/node22/bin:$PATH"
+          node --version
+          npm --version
           npm install --global @gltf-transform/cli@4.2.1
       - name: Download real CC0 hospital and people models
         run: |
