@@ -1,314 +1,359 @@
 extends Node3D
 
-var money := 12000
-var patients := 3
+const FLOOR_SIZE := Vector2(34.0, 26.0)
+const MODEL_DIR := "res://assets/models/"
+
+var money := 15000
+var patients := 4
 var treated := 0
-var beds := 6
+var beds := 8
 var nurses := 2
+var doctors := 1
 var day := 1
-var patient_nodes: Array[Node3D] = []
-var staff_nodes: Array[Node3D] = []
-var hud: CanvasLayer
-var status_label: Label
-var money_label: Label
-var bed_label: Label
-var nurse_label: Label
+var patient_models: Array[Node3D] = []
+var staff_models: Array[Node3D] = []
 var camera: Camera3D
-var world_root: Node3D
-var selected_action := ""
+var world: Node3D
+var hud: CanvasLayer
+var money_text: Label
+var patient_text: Label
+var staff_text: Label
+var message_text: Label
+var camera_dragging := false
 
 func _ready() -> void:
-	_build_world()
+	_build_hospital()
 	_build_camera()
-	_build_hud()
-	_spawn_patients()
-	_spawn_staff()
-	_update_hud()
+	_build_interface()
+	_spawn_people()
+	_refresh_ui()
 
 func _process(delta: float) -> void:
-	for i in range(staff_nodes.size()):
-		var staff := staff_nodes[i]
-		staff.position.z += delta * (0.35 + float(i % 2) * 0.12)
-		if staff.position.z > 4.0:
-			staff.position.z = -2.0
+	for i in range(staff_models.size()):
+		var actor := staff_models[i]
+		if is_instance_valid(actor):
+			actor.position.x = sin(Time.get_ticks_msec() * 0.00035 + i) * 0.7 + float(i) * 0.8 - 1.0
 
-func _mat(color: Color, roughness := 0.85) -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.albedo_color = color
-	m.roughness = roughness
-	return m
+func _material(color: Color, roughness := 0.82, metallic := 0.0) -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.roughness = roughness
+	material.metallic = metallic
+	return material
 
-func _box(parent: Node3D, name: String, pos: Vector3, size: Vector3, color: Color) -> MeshInstance3D:
-	var node := MeshInstance3D.new()
-	node.name = name
+func _box(parent: Node3D, node_name: String, position_3d: Vector3, dimensions: Vector3, color: Color, roughness := 0.82) -> MeshInstance3D:
+	var item := MeshInstance3D.new()
+	item.name = node_name
 	var mesh := BoxMesh.new()
-	mesh.size = size
-	node.mesh = mesh
-	node.position = pos
-	node.material_override = _mat(color)
-	parent.add_child(node)
-	return node
+	mesh.size = dimensions
+	item.mesh = mesh
+	item.position = position_3d
+	item.material_override = _material(color, roughness)
+	parent.add_child(item)
+	return item
 
-func _cylinder(parent: Node3D, name: String, pos: Vector3, radius: float, height: float, color: Color) -> MeshInstance3D:
-	var node := MeshInstance3D.new()
-	node.name = name
+func _cylinder(parent: Node3D, node_name: String, position_3d: Vector3, radius: float, height: float, color: Color) -> MeshInstance3D:
+	var item := MeshInstance3D.new()
+	item.name = node_name
 	var mesh := CylinderMesh.new()
 	mesh.top_radius = radius
 	mesh.bottom_radius = radius
 	mesh.height = height
-	node.mesh = mesh
-	node.position = pos
-	node.material_override = _mat(color)
-	parent.add_child(node)
-	return node
+	item.mesh = mesh
+	item.position = position_3d
+	item.material_override = _material(color)
+	parent.add_child(item)
+	return item
 
-func _add_model(file_name: String, model_position: Vector3, model_scale := Vector3.ONE, yaw := 0.0) -> Node3D:
-	var model_path := "res://assets/models/" + file_name
-	var packed := load(model_path) as PackedScene
+func _add_model(file_name: String, at: Vector3, scale_value := Vector3.ONE, yaw := 0.0) -> Node3D:
+	var path := MODEL_DIR + file_name
+	if not ResourceLoader.exists(path):
+		return null
+	var packed := load(path) as PackedScene
 	if packed == null:
-		push_error("Missing imported 3D model: " + model_path)
 		return null
 	var instance := packed.instantiate() as Node3D
-	instance.position = model_position
-	instance.scale = model_scale
+	if instance == null:
+		return null
+	instance.position = at
+	instance.scale = scale_value
 	instance.rotation.y = yaw
-	world_root.add_child(instance)
+	world.add_child(instance)
 	return instance
 
-func _add_character(file_name: String, character_position: Vector3, character_scale := 1.0, animation_name := "idle") -> Node3D:
-	var character := _add_model(file_name, character_position, Vector3.ONE * character_scale)
-	if character == null:
-		return null
-	var players := character.find_children("*", "AnimationPlayer", true, false)
-	if players.size() > 0:
-		var animation_player := players[0] as AnimationPlayer
-		for animation in animation_player.get_animation_list():
-			if String(animation).to_lower().contains(animation_name.to_lower()):
-				animation_player.play(animation)
-				break
-	return character
+func _build_hospital() -> void:
+	world = Node3D.new()
+	world.name = "HospitalWorld"
+	add_child(world)
 
-func _spawn_staff() -> void:
-	for i in range(nurses):
-		var nurse := _add_character("nurse.glb", Vector3(-4.0 + float(i) * 1.3, 0.0, -1.0), 1.0, "walk")
-		if nurse != null:
-			nurse.name = "Nurse_%d" % i
-			staff_nodes.append(nurse)
-	var doctor := _add_character("doctor.glb", Vector3(5.0, 0.0, -0.5), 1.0, "walk")
-	if doctor != null:
-		doctor.name = "Doctor"
-		staff_nodes.append(doctor)
+	_box(world, "HospitalCampus", Vector3(0, -0.42, 0), Vector3(FLOOR_SIZE.x, 0.8, FLOOR_SIZE.y), Color("aeb9b2"))
+	_box(world, "MainBuildingFloor", Vector3(0, 0.04, -1.0), Vector3(25, 0.16, 17), Color("dce3e4"))
+	_box(world, "EmergencyFloor", Vector3(-10.4, 0.05, 8.0), Vector3(7.5, 0.18, 7.0), Color("c9d9d8"))
+	_box(world, "ParkingFloor", Vector3(11.0, 0.05, 8.0), Vector3(8.0, 0.18, 7.0), Color("646f76"))
 
-func _build_world() -> void:
-	world_root = Node3D.new()
-	world_root.name = "DetailedHospital"
-	add_child(world_root)
+	# Room dividers and architectural shell.
+	_box(world, "RearWall", Vector3(0, 1.5, -9.4), Vector3(25, 3.0, 0.3), Color("e8eeee"))
+	_box(world, "LeftWall", Vector3(-12.4, 1.5, -1.0), Vector3(0.3, 3.0, 17), Color("e8eeee"))
+	_box(world, "RightWall", Vector3(12.4, 1.5, -1.0), Vector3(0.3, 3.0, 17), Color("e8eeee"))
+	_box(world, "WardDivider", Vector3(-4.2, 1.1, -3.5), Vector3(0.16, 2.2, 7.0), Color("b8c8ca"))
+	_box(world, "SurgeryDivider", Vector3(4.0, 1.1, -3.5), Vector3(0.16, 2.2, 7.0), Color("b8c8ca"))
+	_box(world, "FrontReceptionWall", Vector3(0, 1.25, 7.2), Vector3(24.8, 2.5, 0.22), Color("edf1ef"))
+	_box(world, "ReceptionDesk", Vector3(0, 0.72, 5.9), Vector3(7.0, 1.25, 1.0), Color("426b79"))
+	_box(world, "DeskTop", Vector3(0, 1.38, 5.9), Vector3(7.2, 0.12, 1.12), Color("d8e0df"))
 
-	# Real textured CC0 GLB environments, not procedural box substitutes.
-	_add_model("hospital_ward.glb", Vector3(-5.0, 0.0, -3.0))
-	_add_model("operating_theatre.glb", Vector3(5.0, 0.0, -3.0))
-	_add_model("hospital_corridor.glb", Vector3(0.0, 0.0, 3.2), Vector3(1.25, 1.0, 1.0), PI / 2.0)
-	_add_model("ambulance.glb", Vector3(9.0, 0.0, 8.0), Vector3(0.65, 0.65, 0.65), PI / 2.0)
-	_add_model("hospital_exterior.glb", Vector3(-12.0, 0.0, 7.0), Vector3(0.34, 0.34, 0.34))
+	# Eight fully modelled beds, bedside tables, monitors and lights.
+	for i in range(8):
+		var col := i % 4
+		var row := int(i / 4)
+		var p := Vector3(-9.2 + float(col) * 2.25, 0.0, -6.6 + float(row) * 3.5)
+		_make_bed(p, i + 1)
 
-	var ground := _box(world_root, "HospitalGround", Vector3(0, -0.35, 2.0), Vector3(32, 0.5, 25), Color("aab7b1"))
-	var light := DirectionalLight3D.new()
-	light.rotation_degrees = Vector3(-55, -30, 0)
-	light.light_energy = 1.4
-	world_root.add_child(light)
-	var environment := WorldEnvironment.new()
+	# Operating room table and equipment.
+	_box(world, "SurgeryTableBase", Vector3(7.7, 0.55, -4.2), Vector3(1.0, 1.0, 2.8), Color("8c999c"))
+	_box(world, "SurgeryMattress", Vector3(7.7, 1.12, -4.2), Vector3(1.5, 0.22, 3.0), Color("d9e7e8"))
+	_cylinder(world, "SurgicalLamp", Vector3(7.7, 3.0, -5.6), 0.75, 0.12, Color("f5f6e9"))
+	_box(world, "MedicalMonitor", Vector3(10.4, 1.5, -5.4), Vector3(0.18, 1.2, 0.9), Color("273d48"))
+	_box(world, "MonitorScreen", Vector3(10.28, 1.55, -5.4), Vector3(0.04, 0.72, 0.65), Color("3dba9b"))
+
+	# Emergency bay, ambulance and exterior hospital model if imported.
+	_box(world, "AmbulanceBay", Vector3(-10.4, 0.16, 8.0), Vector3(6.7, 0.12, 5.5), Color("e8eeee"))
+	_box(world, "AmbulanceStripe", Vector3(-10.4, 0.25, 8.0), Vector3(6.7, 0.04, 0.22), Color("d64e48"))
+	_add_model("ambulance.glb", Vector3(-10.4, 0.2, 8.0), Vector3(0.7, 0.7, 0.7), PI)
+	_add_model("hospital_exterior.glb", Vector3(0, 0.0, -12.0), Vector3(0.22, 0.22, 0.22))
+	_add_model("hospital_ward.glb", Vector3(-8.2, 0.0, -4.8), Vector3(0.42, 0.42, 0.42))
+	_add_model("operating_theatre.glb", Vector3(7.8, 0.0, -4.5), Vector3(0.42, 0.42, 0.42))
+	_add_model("hospital_corridor.glb", Vector3(0, 0.0, 1.8), Vector3(0.65, 0.65, 0.65), PI / 2.0)
+
+	_make_sign("WARD_SIGN", Vector3(-8.0, 2.5, -8.8), Color("2d8b80"))
+	_make_sign("SURGERY_SIGN", Vector3(7.7, 2.5, -8.8), Color("3676a1"))
+	_make_sign("EMERGENCY_SIGN", Vector3(-10.4, 2.2, 4.2), Color("d94f49"))
+
+	var sun := DirectionalLight3D.new()
+	sun.rotation_degrees = Vector3(-52, -28, 0)
+	sun.light_energy = 1.25
+	world.add_child(sun)
+	var fill := OmniLight3D.new()
+	fill.position = Vector3(0, 8, 2)
+	fill.omni_range = 30
+	fill.light_energy = 1.0
+	world.add_child(fill)
+	var env_node := WorldEnvironment.new()
 	var env := Environment.new()
-	env.background_mode = Environment.BG_SKY
-	env.sky = Sky.new()
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color("8fa4aa")
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("d8e4ed")
-	env.ambient_light_energy = 0.65
+	env.ambient_light_color = Color("dce7e8")
+	env.ambient_light_energy = 0.8
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.ssao_enabled = true
-	env.ssil_enabled = true
-	env.tonemap_exposure = 1.0
-	env.glow_enabled = true
-	env.glow_intensity = 0.18
-	env.glow_strength = 0.35
-	env.glow_bloom = 0.05
-	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
-	environment.environment = env
-	world_root.add_child(environment)
+	env_node.environment = env
+	world.add_child(env_node)
 
-func _make_bed(pos: Vector3) -> void:
-	_box(world_root, "BedFrame", pos + Vector3(0, 0.32, 0), Vector3(1.45, 0.48, 2.15), Color("f7f8fa"))
-	_box(world_root, "Mattress", pos + Vector3(0, 0.59, 0), Vector3(1.32, 0.12, 1.98), Color("b8d8e8"))
-	_box(world_root, "Pillow", pos + Vector3(0, 0.7, -0.72), Vector3(0.85, 0.13, 0.42), Color("ffffff"))
-	_box(world_root, "BedLeg", pos + Vector3(0, 0.12, 0), Vector3(1.2, 0.18, 1.9), Color("9caab2"))
+func _make_bed(at: Vector3, number: int) -> void:
+	_box(world, "BedFrame_%d" % number, at + Vector3(0, 0.32, 0), Vector3(1.35, 0.42, 2.15), Color("8b989e"))
+	_box(world, "Mattress_%d" % number, at + Vector3(0, 0.58, 0), Vector3(1.27, 0.16, 2.02), Color("c5e0e7"))
+	_box(world, "Pillow_%d" % number, at + Vector3(0, 0.72, -0.72), Vector3(0.86, 0.12, 0.4), Color("f7f8f7"))
+	_box(world, "BedHead_%d" % number, at + Vector3(0, 0.92, -1.08), Vector3(1.35, 0.9, 0.12), Color("dce4e5"))
+	_box(world, "BedsideTable_%d" % number, at + Vector3(0.98, 0.42, -0.6), Vector3(0.52, 0.8, 0.55), Color("d6dedb"))
+	_box(world, "MonitorStand_%d" % number, at + Vector3(0.98, 1.25, -1.0), Vector3(0.08, 0.9, 0.08), Color("71858b"))
+	_box(world, "Monitor_%d" % number, at + Vector3(0.98, 1.75, -1.0), Vector3(0.12, 0.58, 0.72), Color("29424b"))
+	_box(world, "MonitorGlow_%d" % number, at + Vector3(0.9, 1.76, -1.0), Vector3(0.025, 0.38, 0.52), Color("48bfa4"))
 
-func _make_sign(label_text: String, pos: Vector3, color: Color) -> void:
-	_box(world_root, label_text + "_Sign", pos, Vector3(3.2, 0.55, 0.16), color)
+func _make_sign(sign_name: String, at: Vector3, color: Color) -> void:
+	_box(world, sign_name, at, Vector3(3.2, 0.6, 0.16), color)
 
 func _build_camera() -> void:
 	camera = Camera3D.new()
-	camera.position = Vector3(13, 25, 22)
-	camera.look_at(Vector3(0, 0, 0), Vector3.UP)
+	camera.name = "TopDownCamera"
+	camera.position = Vector3(0, 28, 25)
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 29
-	add_child(camera)
+	camera.size = 34
 	camera.current = true
+	add_child(camera)
+	camera.look_at(Vector3(0, 0, 0), Vector3.UP)
 
-func _spawn_patients() -> void:
-	_spawn_new_patient_nodes(patients)
+func _spawn_people() -> void:
+	for i in range(patients):
+		_spawn_patient(i)
+	for i in range(nurses):
+		_spawn_staff("nurse.glb", Vector3(-2.0 + i * 1.5, 0, 3.7), i)
+	_spawn_staff("doctor.glb", Vector3(4.5, 0, 2.8), 9)
 
-func _build_hud() -> void:
+func _spawn_patient(index: int) -> void:
+	var model_name := "patient_male.glb" if index % 2 == 0 else "patient_female.glb"
+	var at := Vector3(-8.5 + float(index % 4) * 2.2, 0, 2.2 + float(int(index / 4)) * 1.3)
+	var person := _add_model(model_name, at, Vector3(0.78, 0.78, 0.78))
+	if person == null:
+		person = _make_placeholder_person(at, Color("d5a77d") if index % 2 == 0 else Color("b98572"))
+	if person != null:
+		person.name = "Patient_%d" % index
+		patient_models.append(person)
+
+func _spawn_staff(model_name: String, at: Vector3, index: int) -> void:
+	var person := _add_model(model_name, at, Vector3(0.8, 0.8, 0.8))
+	if person == null:
+		person = _make_placeholder_person(at, Color("e9eeee"))
+	if person != null:
+		person.name = "Staff_%d" % index
+		staff_models.append(person)
+
+func _make_placeholder_person(at: Vector3, uniform_color: Color) -> Node3D:
+	var person := Node3D.new()
+	person.position = at
+	world.add_child(person)
+	_box(person, "Body", Vector3(0, 0.95, 0), Vector3(0.58, 1.15, 0.34), uniform_color)
+	_cylinder(person, "Head", Vector3(0, 1.72, 0), 0.23, 0.42, Color("c99575"))
+	return person
+
+func _build_interface() -> void:
 	hud = CanvasLayer.new()
 	add_child(hud)
-	var panel := PanelContainer.new()
-	panel.position = Vector2(18, 16)
-	panel.size = Vector2(370, 128)
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.035, 0.075, 0.11, 0.94)
-	style.corner_radius_top_left = 14
-	style.corner_radius_top_right = 14
-	style.corner_radius_bottom_left = 14
-	style.corner_radius_bottom_right = 14
-	panel.add_theme_stylebox_override("panel", style)
-	hud.add_child(panel)
-	var info := VBoxContainer.new()
-	info.add_theme_constant_override("separation", 5)
-	panel.add_child(info)
-	var title := Label.new()
-	title.text = "CITY HOSPITAL  |  DAY 1"
-	title.add_theme_font_size_override("font_size", 20)
-	title.add_theme_color_override("font_color", Color("ffffff"))
-	info.add_child(title)
-	money_label = _new_label(info)
-	bed_label = _new_label(info)
-	nurse_label = _new_label(info)
+
+	var top := PanelContainer.new()
+	top.position = Vector2(14, 12)
+	top.size = Vector2(430, 142)
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.035, 0.075, 0.095, 0.94)
+	panel_style.set_corner_radius_all(14)
+	panel_style.set_content_margin_all(12)
+	top.add_theme_stylebox_override("panel", panel_style)
+	hud.add_child(top)
+
+	var stats := VBoxContainer.new()
+	stats.add_theme_constant_override("separation", 5)
+	top.add_child(stats)
+	var heading := Label.new()
+	heading.text = "مستشفى المدينة  |  اليوم 1"
+	heading.add_theme_font_size_override("font_size", 22)
+	heading.add_theme_color_override("font_color", Color("ffffff"))
+	stats.add_child(heading)
+	money_text = _label(stats)
+	patient_text = _label(stats)
+	staff_text = _label(stats)
+
+	message_text = Label.new()
+	message_text.position = Vector2(470, 22)
+	message_text.size = Vector2(760, 45)
+	message_text.add_theme_font_size_override("font_size", 18)
+	message_text.add_theme_color_override("font_color", Color("173e48"))
+	hud.add_child(message_text)
+
 	var actions := HBoxContainer.new()
-	actions.position = Vector2(18, 590)
-	actions.add_theme_constant_override("separation", 10)
+	actions.position = Vector2(14, 585)
+	actions.add_theme_constant_override("separation", 8)
 	hud.add_child(actions)
-	_add_button(actions, "علاج مريض  +$250", _treat_patient)
-	_add_button(actions, "شراء سرير  -$500", _buy_bed)
-	_add_button(actions, "توظيف ممرض  -$800", _hire_nurse)
-	_add_button(actions, "اليوم التالي", _next_day)
-	status_label = Label.new()
-	status_label.position = Vector2(420, 22)
-	status_label.size = Vector2(700, 42)
-	status_label.add_theme_font_size_override("font_size", 20)
-	status_label.add_theme_color_override("font_color", Color("183c4b"))
-	hud.add_child(status_label)
+	_button(actions, "علاج مريض", _treat_patient)
+	_button(actions, "شراء سرير", _buy_bed)
+	_button(actions, "توظيف ممرض", _hire_nurse)
+	_button(actions, "اليوم التالي", _next_day)
+
+	var zoom_plus := Button.new()
+	zoom_plus.text = "+"
+	zoom_plus.position = Vector2(1190, 510)
+	zoom_plus.size = Vector2(64, 58)
+	zoom_plus.pressed.connect(func(): camera.size = maxf(19.0, camera.size - 2.0))
+	hud.add_child(zoom_plus)
+	var zoom_minus := Button.new()
+	zoom_minus.text = "−"
+	zoom_minus.position = Vector2(1190, 574)
+	zoom_minus.size = Vector2(64, 58)
+	zoom_minus.pressed.connect(func(): camera.size = minf(46.0, camera.size + 2.0))
+	hud.add_child(zoom_minus)
+
 	var hint := Label.new()
-	hint.text = "اسحب بإصبعك لتحريك الكاميرا • استخدم زري + و - للتقريب"
-	hint.position = Vector2(18, 685)
-	hint.add_theme_font_size_override("font_size", 15)
-	hint.add_theme_color_override("font_color", Color("243b46"))
+	hint.text = "اسحب الشاشة لتحريك الكاميرا  •  استخدم + و − للتقريب"
+	hint.position = Vector2(16, 690)
+	hint.add_theme_font_size_override("font_size", 14)
+	hint.add_theme_color_override("font_color", Color("183b45"))
 	hud.add_child(hint)
-	var zoom_in := Button.new()
-	zoom_in.text = "+"
-	zoom_in.position = Vector2(1190, 530)
-	zoom_in.size = Vector2(58, 54)
-	zoom_in.pressed.connect(func(): camera.size = maxf(16, camera.size - 2))
-	hud.add_child(zoom_in)
-	var zoom_out := Button.new()
-	zoom_out.text = "-"
-	zoom_out.position = Vector2(1190, 590)
-	zoom_out.size = Vector2(58, 54)
-	zoom_out.pressed.connect(func(): camera.size = minf(38, camera.size + 2))
-	hud.add_child(zoom_out)
 
-func _new_label(parent: Node) -> Label:
-	var l := Label.new()
-	l.add_theme_font_size_override("font_size", 17)
-	l.add_theme_color_override("font_color", Color("e9f4f7"))
-	parent.add_child(l)
-	return l
+func _label(parent: Node) -> Label:
+	var item := Label.new()
+	item.add_theme_font_size_override("font_size", 17)
+	item.add_theme_color_override("font_color", Color("eaf3f3"))
+	parent.add_child(item)
+	return item
 
-func _add_button(parent: Node, caption: String, callback: Callable) -> void:
-	var b := Button.new()
-	b.text = caption
-	b.custom_minimum_size = Vector2(190, 54)
-	b.add_theme_font_size_override("font_size", 17)
-	b.pressed.connect(callback)
-	parent.add_child(b)
+func _button(parent: Node, caption: String, action: Callable) -> void:
+	var item := Button.new()
+	item.text = caption
+	item.custom_minimum_size = Vector2(160, 58)
+	item.add_theme_font_size_override("font_size", 17)
+	item.pressed.connect(action)
+	parent.add_child(item)
 
-func _update_hud() -> void:
-	if money_label == null:
+func _refresh_ui() -> void:
+	if money_text == null:
 		return
-	money_label.text = "💰 الميزانية: $%d" % money
-	bed_label.text = "🛏 الأسرّة: %d   |   المرضى: %d" % [beds, patients]
-	nurse_label.text = "👩‍⚕️ الممرضون: %d   |   الحالات المعالجة: %d" % [nurses, treated]
+	money_text.text = "الميزانية: $%d" % money
+	patient_text.text = "المرضى: %d / الأسرّة: %d  |  المعالَجون: %d" % [patients, beds, treated]
+	staff_text.text = "الممرضون: %d  |  الأطباء: %d" % [nurses, doctors]
+
+func _notify(message: String) -> void:
+	message_text.text = message
 
 func _treat_patient() -> void:
 	if patients <= 0:
-		status_label.text = "لا يوجد مرضى يحتاجون العلاج حالياً."
+		_notify("لا يوجد مريض ينتظر العلاج حالياً.")
 		return
 	patients -= 1
 	treated += 1
 	money += 250
-	if patient_nodes.size() > 0:
-		var p = patient_nodes.pop_front()
-		p.queue_free()
-	status_label.text = "تم علاج مريض بنجاح! حصلت على 250 دولار."
-	_update_hud()
+	if patient_models.size() > 0:
+		var patient = patient_models.pop_front()
+		if is_instance_valid(patient):
+			patient.queue_free()
+	_notify("تم علاج المريض بنجاح! أضيفت 250 دولار إلى الميزانية.")
+	_refresh_ui()
 
 func _buy_bed() -> void:
 	if money < 500:
-		status_label.text = "الميزانية لا تكفي لشراء سرير."
+		_notify("الميزانية لا تكفي لشراء سرير.")
 		return
 	money -= 500
 	beds += 1
-	_make_bed(Vector3(3.4 + float((beds - 7) % 2) * 3.2, 0, -6.4 + float((beds - 7) / 2) * 3.0))
-	status_label.text = "تمت إضافة سرير جديد إلى جناح الرقود."
-	_update_hud()
+	var slot := beds - 1
+	var at := Vector3(-9.2 + float(slot % 4) * 2.25, 0, -6.6 + float(int(slot / 4)) * 3.5)
+	_make_bed(at, beds)
+	_notify("تم تجهيز سرير جديد في جناح الرقود.")
+	_refresh_ui()
 
 func _hire_nurse() -> void:
 	if money < 800:
-		status_label.text = "الميزانية لا تكفي لتوظيف ممرض."
+		_notify("الميزانية لا تكفي لتوظيف ممرض.")
 		return
 	money -= 800
 	nurses += 1
-	var nurse := _add_character("nurse.glb", Vector3(-4.0 + float(nurses - 1) * 1.3, 0.0, -1.0), 1.0, "walk")
-	if nurse != null:
-		nurse.name = "Nurse_%d" % nurses
-		staff_nodes.append(nurse)
-	status_label.text = "تم توظيف ممرض جديد. كفاءة المستشفى ارتفعت."
-	_update_hud()
+	_spawn_staff("nurse.glb", Vector3(-2.0 + nurses * 1.4, 0, 3.7), nurses)
+	_notify("تم تعيين ممرض جديد.")
+	_refresh_ui()
 
 func _next_day() -> void:
 	day += 1
-	var income := treated * 100 + nurses * 40
+	var income := treated * 100 + nurses * 60 + doctors * 100
 	money += income
-	var new_patients := mini(3 + day, beds - patients)
-	patients += maxi(0, new_patients)
-	_spawn_new_patient_nodes(maxi(0, new_patients))
-	status_label.text = "بدأ اليوم %d. دخل المستشفى اليومي: $%d" % [day, income]
-	_update_hud()
-
-func _spawn_new_patient_nodes(amount: int) -> void:
-	for i in range(amount):
-		var patient_index := patient_nodes.size()
-		var model_file := "patient_male.glb" if patient_index % 2 == 0 else "patient_female.glb"
-		var x_position := -8.0 + float(patient_index % 5) * 1.7
-		var z_position := 2.2 + float(patient_index / 5) * 1.5
-		var patient := _add_character(model_file, Vector3(x_position, 0.0, z_position), 1.0, "idle")
-		if patient != null:
-			patient.name = "Patient_%d" % patient_index
-			patient_nodes.append(patient)
-
-var drag_start := Vector2.ZERO
-var dragging := false
+	var arrivals := mini(2 + day % 3, maxi(0, beds - patients))
+	for i in range(arrivals):
+		_spawn_patient(patient_models.size() + treated + i)
+	patients += arrivals
+	_notify("بدأ اليوم %d. دخل المستشفى اليومي: $%d." % [day, income])
+	_refresh_ui()
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
-		if event.pressed:
-			drag_start = event.position
-			dragging = true
-		else:
-			dragging = false
-	elif event is InputEventScreenDrag and dragging:
-		camera.position.x -= event.relative.x * 0.025
-		camera.position.z -= event.relative.y * 0.025
-		camera.look_at(Vector3(camera.position.x - 0.7, 0, camera.position.z - 0.7), Vector3.UP)
+		camera_dragging = event.pressed
+	elif event is InputEventScreenDrag and camera_dragging:
+		_pan_camera(event.relative)
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			camera.size = maxf(16, camera.size - 1.5)
+			camera.size = maxf(19.0, camera.size - 1.5)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			camera.size = minf(38, camera.size + 1.5)
+			camera.size = minf(46.0, camera.size + 1.5)
+	elif event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		_pan_camera(event.relative)
+
+func _pan_camera(relative: Vector2) -> void:
+	camera.position.x -= relative.x * 0.035
+	camera.position.z -= relative.y * 0.035
+	camera.position.x = clampf(camera.position.x, -15.0, 15.0)
+	camera.position.z = clampf(camera.position.z, 12.0, 38.0)
+	camera.look_at(Vector3(camera.position.x, 0, camera.position.z - 25), Vector3.UP)
