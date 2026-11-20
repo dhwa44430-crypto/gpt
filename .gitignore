@@ -1,13 +1,8 @@
-# Dart / Flutter
-.dart_tool/
-.packages
-.pub/
+.godot/
+.import/
+.export/
 build/
-.flutter-plugins
-.flutter-plugins-dependencies
-.metadata
-android/.gradle/
-android/local.properties
-*.iml
-.idea/
-.vscode/
+*.apk
+*.aab
+*.keystore
+*.jks
