@@ -1,8 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:wortise/wortise.dart';
-import 'package:wortise/ad_settings.dart';
 
 void main() => runApp(const WormArenaApp());
 
@@ -60,8 +58,6 @@ class _WormGamePageState extends State<WormGamePage>
   double _growth = .19;
   bool _started = false;
   bool _gameOver = false;
-  bool _wortiseReady = false;
-  InterstitialAd? _interstitialAd;
   Size _boardSize = Size.zero;
 
   SnakeSkin get _skin => skins[_skinIndex];
@@ -71,13 +67,11 @@ class _WormGamePageState extends State<WormGamePage>
     super.initState();
     _resetGame();
     _ticker = createTicker(_onTick)..start();
-    _initializeWortiseAds();
   }
 
   @override
   void dispose() {
     _ticker.dispose();
-    _interstitialAd = null;
     super.dispose();
   }
 
@@ -185,36 +179,6 @@ class _WormGamePageState extends State<WormGamePage>
   }
 
 
-  Future<void> _initializeWortiseAds() async {
-    const appKey = String.fromEnvironment('WORTISE_APP_KEY');
-    try {
-      // Enable Wortise test mode before SDK initialization.
-      await AdSettings.setTestEnabled(true);
-      // The SDK still requires the real App Key from the Wortise dashboard.
-      // Keep the game playable when that key has not been configured yet.
-      if (appKey.isEmpty) {
-        if (mounted) setState(() => _wortiseReady = false);
-        return;
-      }
-      await WortiseSdk.initialize(appKey);
-      if (!mounted) return;
-      _interstitialAd = InterstitialAd(
-        'test-interstitial',
-        listener: (event, args) {
-          if (!mounted) return;
-          if (event == InterstitialAdEvent.DISMISSED) {
-            setState(_resetGame);
-            _interstitialAd?.loadAd();
-          }
-        },
-      );
-      await _interstitialAd?.loadAd();
-      if (mounted) setState(() => _wortiseReady = true);
-    } catch (_) {
-      if (mounted) setState(() => _wortiseReady = false);
-    }
-  }
-
   void _chooseSkin(int index) => setState(() => _skinIndex = index);
 
   @override
@@ -274,7 +238,6 @@ class _WormGamePageState extends State<WormGamePage>
                 _skinPicker(),
                 const SizedBox(height: 8),
                 _bottomHint(),
-                _fakeBannerAd(),
                 const SizedBox(height: 6),
               ],
             );
@@ -303,7 +266,7 @@ class _WormGamePageState extends State<WormGamePage>
                 ),
               ),
             ),
-            _circleButton(Icons.refresh_rounded, _showWortiseInterstitialThenRestart),
+            _circleButton(Icons.refresh_rounded, () => setState(_resetGame)),
           ],
         ),
       );
@@ -394,31 +357,6 @@ class _WormGamePageState extends State<WormGamePage>
             child: Icon(icon, color: const Color(0xffe5f8df), size: 23),
           ),
         ),
-      );
-
-  Future<void> _showWortiseInterstitialThenRestart() async {
-    final ad = _interstitialAd;
-    if (_wortiseReady && ad != null && await ad.isAvailable) {
-      await ad.showAd();
-      return;
-    }
-    setState(_resetGame);
-    if (_wortiseReady) await ad?.loadAd();
-  }
-
-  Widget _fakeBannerAd() => SizedBox(
-        height: 54,
-        child: _wortiseReady
-            ? Center(
-                child: SizedBox(
-                  height: 50,
-                  child: BannerAd(
-                    adSize: AdSize.HEIGHT_50,
-                    adUnitId: 'test-banner',
-                  ),
-                ),
-              )
-            : const SizedBox.shrink(),
       );
 
   void _showMenu() {
