@@ -81,7 +81,9 @@ class _ArrowGamePageState extends State<ArrowGamePage> {
         for (final d in dirs) {
           final q = math.Point<int>(path.last.x + d.x, path.last.y + d.y);
           if (q.x < 0 || q.x >= grid || q.y < 0 || q.y >= grid ||
-              occupied.contains(q) || local.contains(q)) continue;
+              occupied.contains(q) || local.contains(q)) {
+            continue;
+          }
           path.add(q);
           local.add(q);
           last = d;
