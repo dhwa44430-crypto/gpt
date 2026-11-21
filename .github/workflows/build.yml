@@ -18,6 +18,47 @@ jobs:
         run: flutter --version
       - name: Generate Android platform project
         run: flutter create --platforms=android --project-name worm_arena --org com.wormarena --no-pub .
+      - name: Configure Android for 16 KB page-size compatibility
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          settings = Path("android/settings.gradle.kts")
+          app = Path("android/app/build.gradle.kts")
+          wrapper = Path("android/gradle/wrapper/gradle-wrapper.properties")
+          for file in (settings, app, wrapper):
+              if not file.exists():
+                  raise SystemExit(f"Expected generated Android file is missing: {file}")
+
+          settings_text = settings.read_text()
+          agp = re.search(r'id\\("com\\.android\\.application"\\) version "([^"]+)"', settings_text)
+          kotlin = re.search(r'id\\("org\\.jetbrains\\.kotlin\\.android"\\) version "([^"]+)"', settings_text)
+          if not agp or tuple(map(int, agp.group(1).split(".")[:2])) < (8, 9):
+              raise SystemExit("Android Gradle Plugin 8.9.1 or newer is required by Wortise.")
+          if not kotlin or tuple(map(int, kotlin.group(1).split(".")[:2])) < (2, 2):
+              raise SystemExit("Kotlin 2.2 or newer is required by Wortise.")
+
+          app_text = app.read_text()
+          app_text = re.sub(r'compileSdk = flutter\\.compileSdkVersion', 'compileSdk = 36', app_text)
+          app_text = re.sub(r'minSdk = flutter\\.minSdkVersion', 'minSdk = 24', app_text)
+          app_text = re.sub(r'ndkVersion = flutter\\.ndkVersion', 'ndkVersion = "28.2.13676358"', app_text)
+          app.write_text(app_text)
+
+          wrapper_text = wrapper.read_text()
+          wrapper_text = re.sub(
+              r'gradle-[0-9.]+-(?:all|bin)\\.zip',
+              'gradle-8.11.1-all.zip',
+              wrapper_text,
+          )
+          wrapper.write_text(wrapper_text)
+          print("Android configured: compileSdk 36, minSdk 24, NDK r28.")
+          print(f"AGP {agp.group(1)}; Kotlin {kotlin.group(1)}.")
+          PY
+      - name: Install Android NDK r28
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;28.2.13676358"
       - name: Get dependencies
         run: flutter pub get
       - name: Analyze
