@@ -103,17 +103,17 @@ class _WormGamePageState extends State<WormGamePage>
     final previous = _lastTick;
     _lastTick = elapsed;
     if (previous == Duration.zero) return;
-    final dt = ((elapsed - previous).inMicroseconds / 1000000).clamp(0.0, .04);
+    final dt = ((elapsed - previous).inMicroseconds / 1000000).clamp(0.0, .04).toDouble();
     if (dt <= 0) return;
 
     final wantedAngle = math.atan2(_wantedDirection.dy, _wantedDirection.dx);
     final currentAngle = math.atan2(_direction.dy, _direction.dx);
     var difference = (wantedAngle - currentAngle + math.pi * 3) % (math.pi * 2) - math.pi;
     final maxTurn = 3.15 * dt;
-    difference = difference.clamp(-maxTurn, maxTurn);
+    difference = difference.clamp(-maxTurn, maxTurn).toDouble();
     final angle = currentAngle + difference;
     _direction = Offset(math.cos(angle), math.sin(angle));
-    final speed = .255 + math.min(_score, 100) * .00055;
+    final speed = (.255 + math.min(_score, 100) * .00055).toDouble();
     _head = _head + _direction * (speed * dt);
     _trail.insert(0, _head);
     _trimTrail();
@@ -133,8 +133,14 @@ class _WormGamePageState extends State<WormGamePage>
       }
     }
 
-    final body = _pointAtDistance(.09);
-    if ((_head - body).distance < .018 && _trail.length > 35) {
+    var hitOwnBody = false;
+    for (var i = 18; i < _trail.length; i += 2) {
+      if ((_head - _trail[i]).distance < .027) {
+        hitOwnBody = true;
+        break;
+      }
+    }
+    if (hitOwnBody && _trail.length > 35) {
       _finishGame();
       return;
     }
@@ -231,6 +237,7 @@ class _WormGamePageState extends State<WormGamePage>
                               skin: _skin,
                               score: _score,
                               gameOver: _gameOver,
+                              started: _started,
                             ),
                             child: const SizedBox.expand(),
                           ),
@@ -397,6 +404,7 @@ class ArenaPainter extends CustomPainter {
     required this.skin,
     required this.score,
     required this.gameOver,
+    required this.started,
   });
 
   final List<Offset> trail;
@@ -404,6 +412,7 @@ class ArenaPainter extends CustomPainter {
   final SnakeSkin skin;
   final int score;
   final bool gameOver;
+  final bool started;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -446,7 +455,7 @@ class ArenaPainter extends CustomPainter {
     _drawFood(canvas, size);
     _drawSnake(canvas, size);
 
-    if (!gameOver && score == 0) {
+    if (!gameOver && !started) {
       final shade = Paint()..color = const Color(0x22000000);
       canvas.drawRect(rect, shade);
       _drawCenterLabel(canvas, size, 'TOUCH & STEER', 'اسحب داخل الساحة للبدء');
