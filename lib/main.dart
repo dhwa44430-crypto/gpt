@@ -414,33 +414,6 @@ class _WormGamePageState extends State<WormGamePage>
             : const SizedBox.shrink(),
       );
 
-  Widget _legacyFakeBannerAd() => Container(
-        margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-        height: 54,
-        decoration: BoxDecoration(
-          color: const Color(0xff214b3b),
-          borderRadius: BorderRadius.circular(13),
-          border: Border.all(color: const Color(0xff8bcf70).withValues(alpha: .35)),
-        ),
-        child: const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.campaign_outlined, color: Color(0xffffd66b), size: 22),
-            SizedBox(width: 9),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('إعلان تجريبي - Banner', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
-                Text('مكان مؤقت لإعلان Wortise', style: TextStyle(color: Color(0xffb8d5bb), fontSize: 10)),
-              ],
-            ),
-            SizedBox(width: 9),
-            Text('AD', style: TextStyle(color: Color(0xffffd66b), fontWeight: FontWeight.w900, fontSize: 11)),
-          ],
-        ),
-      );
-
   void _showMenu() {
     showModalBottomSheet<void>(
       context: context,
