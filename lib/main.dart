@@ -1,6 +1,10 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:wortise/ad_settings.dart';
+import 'package:wortise/wortise.dart';
+import 'package:wortise/wortise_sdk.dart';
+import 'package:wortise/interstitial_ad.dart' as wortise;
 
 void main() => runApp(const WormArenaApp());
 
@@ -58,6 +62,8 @@ class _WormGamePageState extends State<WormGamePage>
   double _growth = .19;
   bool _started = false;
   bool _gameOver = false;
+  bool _wortiseReady = false;
+  wortise.InterstitialAd? _interstitialAd;
   Size _boardSize = Size.zero;
 
   SnakeSkin get _skin => skins[_skinIndex];
@@ -67,11 +73,13 @@ class _WormGamePageState extends State<WormGamePage>
     super.initState();
     _resetGame();
     _ticker = createTicker(_onTick)..start();
+    _initializeWortiseAds();
   }
 
   @override
   void dispose() {
     _ticker.dispose();
+    _interstitialAd = null;
     super.dispose();
   }
 
@@ -178,6 +186,31 @@ class _WormGamePageState extends State<WormGamePage>
     setState(() {});
   }
 
+
+  Future<void> _initializeWortiseAds() async {
+    const appKey = String.fromEnvironment('WORTISE_APP_KEY');
+    if (appKey.isEmpty) return;
+    try {
+      await WortiseSdk.initialize(appKey);
+      await AdSettings.setTestEnabled(true);
+      if (!mounted) return;
+      _interstitialAd = wortise.InterstitialAd(
+        'test-interstitial',
+        listener: (event, args) {
+          if (!mounted) return;
+          if (event == wortise.InterstitialAdEvent.DISMISSED) {
+            setState(_resetGame);
+            _interstitialAd?.loadAd();
+          }
+        },
+      );
+      await _interstitialAd?.loadAd();
+      if (mounted) setState(() => _wortiseReady = true);
+    } catch (_) {
+      if (mounted) setState(() => _wortiseReady = false);
+    }
+  }
+
   void _chooseSkin(int index) => setState(() => _skinIndex = index);
 
   @override
@@ -266,7 +299,7 @@ class _WormGamePageState extends State<WormGamePage>
                 ),
               ),
             ),
-            _circleButton(Icons.refresh_rounded, _showFakeInterstitialThenRestart),
+            _circleButton(Icons.refresh_rounded, _showWortiseInterstitialThenRestart),
           ],
         ),
       );
@@ -359,63 +392,30 @@ class _WormGamePageState extends State<WormGamePage>
         ),
       );
 
-  Future<void> _showFakeInterstitialThenRestart() async {
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => Dialog(
-        backgroundColor: const Color(0xff102d24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        child: Padding(
-          padding: const EdgeInsets.all(22),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text('إعلان تجريبي', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w900)),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(dialogContext),
-                    icon: const Icon(Icons.close_rounded, color: Colors.white70),
-                  ),
-                ],
-              ),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 34, horizontal: 16),
-                decoration: BoxDecoration(
-                  color: const Color(0xffe9f2e8),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Column(
-                  children: [
-                    Icon(Icons.campaign_rounded, color: Color(0xff267a50), size: 48),
-                    SizedBox(height: 12),
-                    Text('مساحة إعلان بيني', style: TextStyle(color: Color(0xff174832), fontSize: 18, fontWeight: FontWeight.w900)),
-                    SizedBox(height: 6),
-                    Text('هذا مكان مؤقت للإعلان. سنستبدله بإعلان Wortise الحقيقي لاحقاً.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xff315b43), fontSize: 12)),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('متابعة وإعادة المحاولة'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    if (!mounted) return;
+  Future<void> _showWortiseInterstitialThenRestart() async {
+    final ad = _interstitialAd;
+    if (_wortiseReady && ad != null && await ad.isAvailable) {
+      await ad.showAd();
+      return;
+    }
     setState(_resetGame);
+    if (_wortiseReady) await ad?.loadAd();
   }
+
+  Widget _fakeBannerAd() => SizedBox(
+        height: 54,
+        child: _wortiseReady
+            ? const Center(
+                child: SizedBox(
+                  height: 50,
+                  child: BannerAd(
+                    adSize: AdSize.HEIGHT_50,
+                    adUnitId: 'test-banner',
+                  ),
+                ),
+              )
+            : const SizedBox.shrink(),
+      );
 
   Widget _fakeBannerAd() => Container(
         margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
