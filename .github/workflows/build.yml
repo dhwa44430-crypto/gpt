@@ -16,6 +16,8 @@ jobs:
           channel: stable
       - name: Flutter version
         run: flutter --version
+      - name: Generate Android platform project
+        run: flutter create --platforms=android --project-name arrow_escape --org com.arrowescape --no-pub .
       - name: Get dependencies
         run: flutter pub get
       - name: Analyze
