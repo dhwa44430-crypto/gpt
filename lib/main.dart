@@ -237,7 +237,8 @@ class _WormGamePageState extends State<WormGamePage>
                 _skinPicker(),
                 const SizedBox(height: 8),
                 _bottomHint(),
-                const SizedBox(height: 10),
+                _fakeBannerAd(),
+                const SizedBox(height: 6),
               ],
             );
           }),
@@ -265,7 +266,7 @@ class _WormGamePageState extends State<WormGamePage>
                 ),
               ),
             ),
-            _circleButton(Icons.refresh_rounded, () => setState(_resetGame)),
+            _circleButton(Icons.refresh_rounded, _showFakeInterstitialThenRestart),
           ],
         ),
       );
@@ -355,6 +356,91 @@ class _WormGamePageState extends State<WormGamePage>
             height: 43,
             child: Icon(icon, color: const Color(0xffe5f8df), size: 23),
           ),
+        ),
+      );
+
+  Future<void> _showFakeInterstitialThenRestart() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: const Color(0xff102d24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        child: Padding(
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text('إعلان تجريبي', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w900)),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                  ),
+                ],
+              ),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 34, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xffe9f2e8),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Column(
+                  children: [
+                    Icon(Icons.campaign_rounded, color: Color(0xff267a50), size: 48),
+                    SizedBox(height: 12),
+                    Text('مساحة إعلان بيني', style: TextStyle(color: Color(0xff174832), fontSize: 18, fontWeight: FontWeight.w900)),
+                    SizedBox(height: 6),
+                    Text('هذا مكان مؤقت للإعلان. سنستبدله بإعلان Wortise الحقيقي لاحقاً.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xff315b43), fontSize: 12)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('متابعة وإعادة المحاولة'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted) return;
+    setState(_resetGame);
+  }
+
+  Widget _fakeBannerAd() => Container(
+        margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+        height: 54,
+        decoration: BoxDecoration(
+          color: const Color(0xff214b3b),
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: const Color(0xff8bcf70).withValues(alpha: .35)),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.campaign_outlined, color: Color(0xffffd66b), size: 22),
+            SizedBox(width: 9),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('إعلان تجريبي - Banner', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
+                Text('مكان مؤقت لإعلان Wortise', style: TextStyle(color: Color(0xffb8d5bb), fontSize: 10)),
+              ],
+            ),
+            SizedBox(width: 9),
+            Text('AD', style: TextStyle(color: Color(0xffffd66b), fontWeight: FontWeight.w900, fontSize: 11)),
+          ],
         ),
       );
 
