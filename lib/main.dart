@@ -99,18 +99,6 @@ class _ArrowGamePageState extends State<ArrowGamePage> {
     setState(() {});
   }
 
-  bool _tooCloseToOtherPath(math.Point<int> point, Set<math.Point<int>> occupied) {
-    for (var dx = -1; dx <= 1; dx++) {
-      for (var dy = -1; dy <= 1; dy++) {
-        if (dx == 0 && dy == 0) continue;
-        if (occupied.contains(math.Point<int>(point.x + dx, point.y + dy))) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
   bool _isClear(int index) {
     final arrow = arrows[index];
     final d = arrow.direction;
