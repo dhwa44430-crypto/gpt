@@ -60,14 +60,39 @@ jobs:
       - name: Install Android NDK r28
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
       - name: Get dependencies
         run: flutter pub get
       - name: Analyze
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - name: Run tests
         run: flutter test
-      - name: Build release APK
-        run: flutter build apk --release
+      - name: Build release APK (retry transient Maven errors)
+        shell: bash
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.parallel=false -Dorg.gradle.workers.max=2"
+        run: |
+          for attempt in 1 2 3 4 5; do
+            echo "APK build attempt $attempt of 5"
+            if flutter build apk --release; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              WAIT=$((attempt * 30))
+              echo "Build failed; retrying in ${WAIT}s to recover from temporary Maven Central HTTP 429 limits."
+              sleep "$WAIT"
+            fi
+          done
+          echo "APK build failed after 5 attempts."
+          exit 1
       - name: Verify 16 KB APK alignment
         shell: bash
         run: |
