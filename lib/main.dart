@@ -56,45 +56,90 @@ class _ArrowGamePageState extends State<ArrowGamePage> {
     hintIndex = -1;
     won = false;
     message = 'اضغط على سهم طريقه مفتوح للخروج';
+
     final random = math.Random(31991 + level * 7919);
     final occupied = <math.Point<int>>{};
-    final target = math.min(24 + level, 38);
-    var tries = 0;
-    while (arrows.length < target && tries < target * 100) {
-      tries++;
-      final start = math.Point<int>(random.nextInt(grid - 2) + 1, random.nextInt(grid - 2) + 1);
+    final target = math.min(25 + level ~/ 3, 32);
+    var attempts = 0;
+
+    // Grow many separate, continuous, right-angled arrow paths.
+    // Shorter controlled walks make the board dense instead of producing
+    // only a handful of huge paths that stop after colliding.
+    while (arrows.length < target && attempts < target * 500) {
+      attempts++;
+      final start = math.Point<int>(
+        random.nextInt(grid),
+        random.nextInt(grid),
+      );
       if (occupied.contains(start)) continue;
+
       final path = <math.Point<int>>[start];
       final local = <math.Point<int>>{start};
-      var last = const math.Point<int>(0, 0);
-      final steps = 9 + random.nextInt(10);
-      for (var step = 0; step < steps; step++) {
-        final dirs = <math.Point<int>>[
-          const math.Point<int>(0, -1), const math.Point<int>(0, 1),
-          const math.Point<int>(-1, 0), const math.Point<int>(1, 0),
-        ];
-        if (last.x != 0 || last.y != 0) {
-          if (random.nextBool()) dirs.remove(math.Point<int>(-last.x, -last.y));
-        }
-        dirs.shuffle(random);
+      var previous = const math.Point<int>(0, 0);
+      final desiredLength = 7 + random.nextInt(9);
+
+      for (var step = 1; step < desiredLength; step++) {
+        final directions = <math.Point<int>>[
+          const math.Point<int>(0, -1),
+          const math.Point<int>(0, 1),
+          const math.Point<int>(-1, 0),
+          const math.Point<int>(1, 0),
+        ]..shuffle(random);
+
         var advanced = false;
-        for (final d in dirs) {
-          final q = math.Point<int>(path.last.x + d.x, path.last.y + d.y);
-          if (q.x < 0 || q.x >= grid || q.y < 0 || q.y >= grid ||
-              occupied.contains(q)) {
+        for (final direction in directions) {
+          // Avoid immediate U-turns; turns remain square like the reference.
+          if (direction.x == -previous.x &&
+              direction.y == -previous.y) {
             continue;
           }
-          path.add(q);
-          local.add(q);
-          last = d;
+          final next = math.Point<int>(
+            path.last.x + direction.x,
+            path.last.y + direction.y,
+          );
+          if (next.x < 0 || next.x >= grid ||
+              next.y < 0 || next.y >= grid ||
+              occupied.contains(next) || local.contains(next)) {
+            continue;
+          }
+          path.add(next);
+          local.add(next);
+          previous = direction;
           advanced = true;
           break;
         }
         if (!advanced) break;
       }
-      if (path.length < 4) continue;
+
+      if (path.length < 6) continue;
       arrows.add(ArrowPath(path));
       occupied.addAll(path);
+    }
+
+    // If a rare random layout is too sparse, fill remaining open space
+    // with short straight arrows so every level starts with a full board.
+    if (arrows.length < 12) {
+      for (var y = 0; y < grid; y++) {
+        for (var x = 0; x < grid; x++) {
+          if (arrows.length >= 16) break;
+          final start = math.Point<int>(x, y);
+          if (occupied.contains(start)) continue;
+          final candidates = <List<math.Point<int>>>[
+            [start, math.Point<int>(x + 1, y), math.Point<int>(x + 2, y)],
+            [start, math.Point<int>(x, y + 1), math.Point<int>(x, y + 2)],
+          ];
+          for (final path in candidates) {
+            if (path.any((p) =>
+                p.x < 0 || p.x >= grid || p.y < 0 || p.y >= grid ||
+                occupied.contains(p))) {
+              continue;
+            }
+            arrows.add(ArrowPath(path));
+            occupied.addAll(path);
+            break;
+          }
+        }
+      }
     }
     setState(() {});
   }
