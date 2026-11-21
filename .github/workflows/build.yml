@@ -35,10 +35,18 @@ jobs:
           settings_text = settings.read_text()
           agp = re.search(r'id\("com\.android\.application"\) version "([^"]+)"', settings_text)
           kotlin = re.search(r'id\("org\.jetbrains\.kotlin\.android"\) version "([^"]+)"', settings_text)
-          if not agp or tuple(map(int, agp.group(1).split(".")[:2])) < (8, 9):
+          def version_tuple(value):
+              return tuple(map(int, value.split("-")[0].split(".")[:3]))
+
+          if not agp or version_tuple(agp.group(1)) < (8, 9, 1):
               raise SystemExit("Android Gradle Plugin 8.9.1 or newer is required by Wortise.")
-          if not kotlin or tuple(map(int, kotlin.group(1).split(".")[:2])) < (2, 2):
+          if not kotlin or version_tuple(kotlin.group(1)) < (2, 2, 0):
               raise SystemExit("Kotlin 2.2 or newer is required by Wortise.")
+
+          wrapper_text = wrapper.read_text()
+          gradle = re.search(r'gradle-([0-9.]+)-(?:all|bin)\.zip', wrapper_text)
+          if not gradle or version_tuple(gradle.group(1)) < (8, 11, 1):
+              raise SystemExit("Gradle 8.11.1 or newer is required by Wortise.")
 
           app_text = app.read_text()
           app_text = re.sub(r'compileSdk = flutter\.compileSdkVersion', 'compileSdk = 36', app_text)
@@ -46,14 +54,8 @@ jobs:
           app_text = re.sub(r'ndkVersion = flutter\.ndkVersion', 'ndkVersion = "28.2.13676358"', app_text)
           app.write_text(app_text)
 
-          wrapper_text = wrapper.read_text()
-          wrapper_text = re.sub(
-              r'gradle-[0-9.]+-(?:all|bin)\.zip',
-              'gradle-8.11.1-all.zip',
-              wrapper_text,
-          )
-          wrapper.write_text(wrapper_text)
           print("Android configured: compileSdk 36, minSdk 24, NDK r28.")
+          print(f"AGP {agp.group(1)}; Kotlin {kotlin.group(1)}; Gradle {gradle.group(1)}.")
           print(f"AGP {agp.group(1)}; Kotlin {kotlin.group(1)}.")
           PY
       - name: Install Android NDK r28
