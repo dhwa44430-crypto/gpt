@@ -58,7 +58,7 @@ class _ArrowGamePageState extends State<ArrowGamePage> {
     message = 'اضغط على سهم طريقه مفتوح للخروج';
     final random = math.Random(31991 + level * 7919);
     final occupied = <math.Point<int>>{};
-    final target = math.min(24 + level * 2, 48);
+    final target = math.min(18 + level, 32);
     var tries = 0;
     while (arrows.length < target && tries < target * 100) {
       tries++;
@@ -81,7 +81,8 @@ class _ArrowGamePageState extends State<ArrowGamePage> {
         for (final d in dirs) {
           final q = math.Point<int>(path.last.x + d.x, path.last.y + d.y);
           if (q.x < 0 || q.x >= grid || q.y < 0 || q.y >= grid ||
-              occupied.contains(q) || local.contains(q)) {
+              occupied.contains(q) || local.contains(q) ||
+              _tooCloseToOtherPath(q, occupied)) {
             continue;
           }
           path.add(q);
@@ -97,6 +98,18 @@ class _ArrowGamePageState extends State<ArrowGamePage> {
       occupied.addAll(path);
     }
     setState(() {});
+  }
+
+  bool _tooCloseToOtherPath(math.Point<int> point, Set<math.Point<int>> occupied) {
+    for (var dx = -1; dx <= 1; dx++) {
+      for (var dy = -1; dy <= 1; dy++) {
+        if (dx == 0 && dy == 0) continue;
+        if (occupied.contains(math.Point<int>(point.x + dx, point.y + dy))) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   bool _isClear(int index) {
@@ -274,30 +287,57 @@ class ArrowBoardPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final cell = size.width / 17;
-    final line = Paint()..color = const Color(0xff111111)..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(2.8, cell * .17)..strokeCap = StrokeCap.square..strokeJoin = StrokeJoin.miter;
+    final strokeWidth = math.max(2.0, cell * .12).toDouble();
+    final linePaint = Paint()
+      ..color = const Color(0xff080808)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..isAntiAlias = true;
+    final arrowPaint = Paint()
+      ..color = const Color(0xff080808)
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true;
+
     for (var i = 0; i < arrows.length; i++) {
       if (!arrows[i].alive) continue;
-      final path = Path();
-      final points = arrows[i].cells.map((p) => Offset((p.x + .5) * cell, (p.y + .5) * cell)).toList();
-      path.moveTo(points.first.dx, points.first.dy);
+      final points = arrows[i].cells
+          .map((p) => Offset((p.x + .5) * cell, (p.y + .5) * cell))
+          .toList(growable: false);
+      if (points.length < 2) continue;
+
+      final path = Path()..moveTo(points.first.dx, points.first.dy);
       for (var j = 1; j < points.length; j++) {
         path.lineTo(points[j].dx, points[j].dy);
       }
-      canvas.drawPath(path, line);
+      canvas.drawPath(path, linePaint);
+
       final tip = points.last;
       final d = arrows[i].direction;
       final direction = Offset(d.x.toDouble(), d.y.toDouble());
       final side = Offset(-direction.dy, direction.dx);
-      final len = cell * .48;
-      final width = cell * .30;
-      final head = Path()
-        ..moveTo(tip.dx - direction.dx * len + side.dx * width, tip.dy - direction.dy * len + side.dy * width)
-        ..lineTo(tip.dx, tip.dy)
-        ..lineTo(tip.dx - direction.dx * len - side.dx * width, tip.dy - direction.dy * len - side.dy * width);
-      canvas.drawPath(head, line);
+      final headLength = cell * .34;
+      final headHalfWidth = cell * .23;
+      final triangle = Path()
+        ..moveTo(tip.dx, tip.dy)
+        ..lineTo(
+          tip.dx - direction.dx * headLength + side.dx * headHalfWidth,
+          tip.dy - direction.dy * headLength + side.dy * headHalfWidth,
+        )
+        ..lineTo(
+          tip.dx - direction.dx * headLength - side.dx * headHalfWidth,
+          tip.dy - direction.dy * headLength - side.dy * headHalfWidth,
+        )
+        ..close();
+      canvas.drawPath(triangle, arrowPaint);
+
       if (i == hintIndex) {
-        canvas.drawCircle(tip, cell * .38, Paint()..color = const Color(0x44ffbf00));
+        canvas.drawCircle(
+          tip,
+          cell * .42,
+          Paint()..color = const Color(0x33ffbf00)..isAntiAlias = true,
+        );
       }
     }
   }
