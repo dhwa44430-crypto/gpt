@@ -1,4 +1,4 @@
-name: Build Arrow Escape Puzzle Android APK
+name: Build Arrow Escape Flutter APK
 on:
   push:
     branches: ["main"]
@@ -8,67 +8,23 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: barichello/godot-ci:4.4.1
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - name: Install Android export requirements
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends openjdk-17-jdk unzip curl ca-certificates
-          export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
-          export PATH="$JAVA_HOME/bin:$PATH"
-          ADB_PATH="$(find / -type f -path '*/platform-tools/adb' 2>/dev/null | head -n 1)"
-          if [ -z "$ADB_PATH" ]; then echo "Android SDK adb not found"; exit 1; fi
-          ANDROID_HOME="$(dirname "$(dirname "$ADB_PATH")")"
-          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager 2>/dev/null | head -n 1)"
-          if [ -z "$SDKMANAGER" ]; then echo "Android SDK sdkmanager not found"; exit 1; fi
-          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
-          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-          export HOME=/github/home
-          mkdir -p "$HOME/.config/godot" "$HOME/.local/share/godot/export_templates/4.4.1.stable" "$HOME/.android" /tmp/godot-templates/unpacked
-          cat > "$HOME/.config/godot/editor_settings-4.4.tres" <<EOF
-          [gd_resource type="EditorSettings" format=3]
-          [resource]
-          export/android/android_sdk_path = "$ANDROID_HOME"
-          export/android/java_sdk_path = "$JAVA_HOME"
-          EOF
-          curl -fL --retry 3 https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz -o /tmp/templates.tpz
-          unzip -q /tmp/templates.tpz -d /tmp/godot-templates/unpacked
-          TEMPLATE_DIR="$HOME/.local/share/godot/export_templates/4.4.1.stable"
-          ANDROID_TEMPLATE="$(find /tmp/godot-templates/unpacked -type f -name android_source.zip | head -n 1)"
-          test -n "$ANDROID_TEMPLATE"
-          cp "$ANDROID_TEMPLATE" "$TEMPLATE_DIR/android_source.zip"
-          for f in android_debug.apk android_release.apk version.txt; do
-            SOURCE="$(find /tmp/godot-templates/unpacked -type f -name "$f" | head -n 1)"
-            if [ -n "$SOURCE" ]; then cp "$SOURCE" "$TEMPLATE_DIR/$f"; fi
-          done
-          if [ ! -f "$TEMPLATE_DIR/version.txt" ]; then printf '4.4.1.stable\n' > "$TEMPLATE_DIR/version.txt"; fi
-          test "$(tr -d '\r\n' < "$TEMPLATE_DIR/version.txt")" = "4.4.1.stable"
-          keytool -genkeypair -noprompt -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
-      - name: Import Godot project
-        run: |
-          export HOME=/github/home
-          godot --headless --editor --path . --import
-      - name: Export Android APK
-        run: |
-          export HOME=/github/home
-          export XDG_CONFIG_HOME="$HOME/.config"
-          export XDG_DATA_HOME="$HOME/.local/share"
-          export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
-          export PATH="$JAVA_HOME/bin:$PATH"
-          ADB_PATH="$(find / -type f -path '*/platform-tools/adb' 2>/dev/null | head -n 1)"
-          export ANDROID_HOME="$(dirname "$(dirname "$ADB_PATH")")"
-          export GODOT_ANDROID_KEYSTORE_DEBUG_PATH="$HOME/.android/debug.keystore"
-          export GODOT_ANDROID_KEYSTORE_DEBUG_USER="androiddebugkey"
-          export GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD="android"
-          mkdir -p build
-          godot --headless --editor --path . --quit --verbose
-          godot --headless --path . --export-debug "Android" build/ArrowEscapePuzzle.apk
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Flutter version
+        run: flutter --version
+      - name: Get dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Build release APK
+        run: flutter build apk --release
       - uses: actions/upload-artifact@v4
         with:
-          name: arrow-escape-puzzle-android
-          path: build/ArrowEscapePuzzle.apk
+          name: arrow-escape-flutter-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 14
