@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:wortise/wortise.dart';
+import 'package:wortise/ad_settings.dart';
 
 void main() => runApp(const WormArenaApp());
 
@@ -186,10 +187,16 @@ class _WormGamePageState extends State<WormGamePage>
 
   Future<void> _initializeWortiseAds() async {
     const appKey = String.fromEnvironment('WORTISE_APP_KEY');
-    if (appKey.isEmpty) return;
     try {
-      await WortiseSdk.initialize(appKey);
+      // Enable Wortise test mode before SDK initialization.
       await AdSettings.setTestEnabled(true);
+      // The SDK still requires the real App Key from the Wortise dashboard.
+      // Keep the game playable when that key has not been configured yet.
+      if (appKey.isEmpty) {
+        if (mounted) setState(() => _wortiseReady = false);
+        return;
+      }
+      await WortiseSdk.initialize(appKey);
       if (!mounted) return;
       _interstitialAd = InterstitialAd(
         'test-interstitial',
