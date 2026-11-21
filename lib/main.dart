@@ -158,19 +158,6 @@ class _WormGamePageState extends State<WormGamePage>
     if (keep < _trail.length) _trail.removeRange(keep, _trail.length);
   }
 
-  Offset _pointAtDistance(double wanted) {
-    var distance = 0.0;
-    for (var i = 1; i < _trail.length; i++) {
-      final segment = (_trail[i - 1] - _trail[i]).distance;
-      if (distance + segment >= wanted && segment > 0) {
-        return Offset.lerp(_trail[i - 1], _trail[i],
-            (wanted - distance) / segment)!;
-      }
-      distance += segment;
-    }
-    return _trail.isEmpty ? _head : _trail.last;
-  }
-
   void _finishGame() {
     _gameOver = true;
     _best = math.max(_best, _score);
