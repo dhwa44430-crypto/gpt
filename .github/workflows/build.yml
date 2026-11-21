@@ -85,13 +85,18 @@ jobs:
                 /LOAD/ {
                   found = 1
                   exponent = $NF
-                  if (exponent !~ /^2\\*\\*[0-9]+$/) bad = 1
-                  else {
-                    sub(/^2\\*\\*/, "", exponent)
-                    if (exponent < 14) bad = 1
+                  if (exponent !~ /^2[*][*][0-9]+$/) {
+                    print "Unrecognized ELF LOAD alignment: " exponent
+                    bad = 1
+                  } else {
+                    sub(/^2[*][*]/, "", exponent)
+                    if (exponent < 14) {
+                      print "ELF LOAD segment is below 16 KB alignment: 2**" exponent
+                      bad = 1
+                    }
                   }
                 }
-                END { if (!found || bad) exit 1 }
+                END { if (!found) { print "No ELF LOAD segments found"; exit 1 }; if (bad) exit 1 }
               ' || { echo "16 KB ELF alignment failed: $LIB"; exit 1; }
             done
           done
