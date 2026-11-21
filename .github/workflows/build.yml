@@ -84,10 +84,11 @@ jobs:
               "$NDK_BIN/llvm-objdump" -p "$LIB" | awk '
                 /LOAD/ {
                   found = 1
-                  if ($NF !~ /^2\\*\\*[1-9][0-9]*$/) bad = 1
+                  exponent = $NF
+                  if (exponent !~ /^2\\*\\*[0-9]+$/) bad = 1
                   else {
-                    split($NF, p, "**")
-                    if (p[2] < 14) bad = 1
+                    sub(/^2\\*\\*/, "", exponent)
+                    if (exponent < 14) bad = 1
                   }
                 }
                 END { if (!found || bad) exit 1 }
