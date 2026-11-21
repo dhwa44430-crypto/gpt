@@ -56,7 +56,6 @@ jobs:
 
           print("Android configured: compileSdk 36, minSdk 24, NDK r28.")
           print(f"AGP {agp.group(1)}; Kotlin {kotlin.group(1)}; Gradle {gradle.group(1)}.")
-          print(f"AGP {agp.group(1)}; Kotlin {kotlin.group(1)}.")
           PY
       - name: Install Android NDK r28
         run: |
@@ -69,6 +68,33 @@ jobs:
         run: flutter test
       - name: Build release APK
         run: flutter build apk --release
+      - name: Verify 16 KB APK alignment
+        shell: bash
+        run: |
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          BUILD_TOOLS="$(ls -1 "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS/zipalign" -c -P 16 -v 4 "$APK"
+          NDK_BIN="$ANDROID_HOME/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          mkdir -p /tmp/worm-arena-apk
+          unzip -q "$APK" -d /tmp/worm-arena-apk
+          for ABI in arm64-v8a x86_64; do
+            LIB_DIR="/tmp/worm-arena-apk/lib/$ABI"
+            [ -d "$LIB_DIR" ] || continue
+            find "$LIB_DIR" -name '*.so' -print0 | while IFS= read -r -d '' LIB; do
+              "$NDK_BIN/llvm-objdump" -p "$LIB" | awk '
+                /LOAD/ {
+                  found = 1
+                  if ($NF !~ /^2\\*\\*[1-9][0-9]*$/) bad = 1
+                  else {
+                    split($NF, p, "**")
+                    if (p[2] < 14) bad = 1
+                  }
+                }
+                END { if (!found || bad) exit 1 }
+              ' || { echo "16 KB ELF alignment failed: $LIB"; exit 1; }
+            done
+          done
+          echo "APK ZIP alignment and 64-bit ELF alignment checks passed."
       - uses: actions/upload-artifact@v4
         with:
           name: worm-arena-android-apk
