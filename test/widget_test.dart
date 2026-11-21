@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/main.dart';
+import 'package:arrow_escape/main.dart';
 
 void main() {
   testWidgets('Arrow Escape opens its game screen', (tester) async {
