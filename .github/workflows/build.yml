@@ -59,7 +59,7 @@ jobs:
           PY
       - name: Install Android NDK r28
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;28.2.13676358"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
       - name: Get dependencies
         run: flutter pub get
       - name: Analyze
