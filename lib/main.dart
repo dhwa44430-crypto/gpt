@@ -1,10 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:wortise/ad_settings.dart';
 import 'package:wortise/wortise.dart';
-import 'package:wortise/wortise_sdk.dart';
-import 'package:wortise/interstitial_ad.dart' as wortise;
 
 void main() => runApp(const WormArenaApp());
 
@@ -63,7 +60,7 @@ class _WormGamePageState extends State<WormGamePage>
   bool _started = false;
   bool _gameOver = false;
   bool _wortiseReady = false;
-  wortise.InterstitialAd? _interstitialAd;
+  InterstitialAd? _interstitialAd;
   Size _boardSize = Size.zero;
 
   SnakeSkin get _skin => skins[_skinIndex];
@@ -194,11 +191,11 @@ class _WormGamePageState extends State<WormGamePage>
       await WortiseSdk.initialize(appKey);
       await AdSettings.setTestEnabled(true);
       if (!mounted) return;
-      _interstitialAd = wortise.InterstitialAd(
+      _interstitialAd = InterstitialAd(
         'test-interstitial',
         listener: (event, args) {
           if (!mounted) return;
-          if (event == wortise.InterstitialAdEvent.DISMISSED) {
+          if (event == InterstitialAdEvent.DISMISSED) {
             setState(_resetGame);
             _interstitialAd?.loadAd();
           }
@@ -405,7 +402,7 @@ class _WormGamePageState extends State<WormGamePage>
   Widget _fakeBannerAd() => SizedBox(
         height: 54,
         child: _wortiseReady
-            ? const Center(
+            ? Center(
                 child: SizedBox(
                   height: 50,
                   child: BannerAd(
@@ -417,7 +414,7 @@ class _WormGamePageState extends State<WormGamePage>
             : const SizedBox.shrink(),
       );
 
-  Widget _fakeBannerAd() => Container(
+  Widget _legacyFakeBannerAd() => Container(
         margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
         height: 54,
         decoration: BoxDecoration(
