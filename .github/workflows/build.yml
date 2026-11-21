@@ -1,4 +1,4 @@
-name: Build Arrow Escape Flutter APK
+name: Build Worm Arena Android APK
 on:
   push:
     branches: ["main"]
@@ -17,16 +17,18 @@ jobs:
       - name: Flutter version
         run: flutter --version
       - name: Generate Android platform project
-        run: flutter create --platforms=android --project-name arrow_escape --org com.arrowescape --no-pub .
+        run: flutter create --platforms=android --project-name worm_arena --org com.wormarena --no-pub .
       - name: Get dependencies
         run: flutter pub get
       - name: Analyze
         run: flutter analyze
+      - name: Run tests
+        run: flutter test
       - name: Build release APK
         run: flutter build apk --release
       - uses: actions/upload-artifact@v4
         with:
-          name: arrow-escape-flutter-apk
+          name: worm-arena-android-apk
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 14

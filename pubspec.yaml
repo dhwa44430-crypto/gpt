@@ -1,5 +1,5 @@
-name: arrow_escape
-description: A monochrome arrow maze puzzle game.
+name: worm_arena
+description: A colorful animated snake arena game built with Flutter.
 publish_to: 'none'
 version: 1.0.0+1
 

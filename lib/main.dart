@@ -1,380 +1,583 @@
 import 'dart:math' as math;
-// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
-void main() => runApp(const ArrowEscapeApp());
+void main() => runApp(const WormArenaApp());
 
-class ArrowEscapeApp extends StatelessWidget {
-  const ArrowEscapeApp({super.key});
+class WormArenaApp extends StatelessWidget {
+  const WormArenaApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return const MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: ArrowGamePage(),
-    );
-  }
+  Widget build(BuildContext context) => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          useMaterial3: true,
+          fontFamily: 'Arial',
+          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff69d64d)),
+        ),
+        home: const WormGamePage(),
+      );
 }
 
-class ArrowPath {
-  ArrowPath(this.cells);
-  final List<math.Point<int>> cells;
-  bool alive = true;
-  math.Point<int> get direction {
-    final a = cells[cells.length - 2];
-    final b = cells.last;
-    return math.Point<int>(b.x - a.x, b.y - a.y);
-  }
+class SnakeSkin {
+  const SnakeSkin(this.name, this.primary, this.secondary, this.accent);
+  final String name;
+  final Color primary;
+  final Color secondary;
+  final Color accent;
 }
 
-class ArrowGamePage extends StatefulWidget {
-  const ArrowGamePage({super.key});
+const skins = <SnakeSkin>[
+  SnakeSkin('Lime', Color(0xffa7f04b), Color(0xff35a83e), Color(0xffeaff9c)),
+  SnakeSkin('Ocean', Color(0xff52e6ef), Color(0xff1679c5), Color(0xffd4ffff)),
+  SnakeSkin('Berry', Color(0xffff77bd), Color(0xffb52f86), Color(0xffffd8ed)),
+  SnakeSkin('Flame', Color(0xffffc04c), Color(0xffed5b2e), Color(0xffffffb0)),
+  SnakeSkin('Violet', Color(0xffbd8aff), Color(0xff6843c7), Color(0xfff0dcff)),
+  SnakeSkin('Shadow', Color(0xff596579), Color(0xff202b3b), Color(0xffc6d5e8)),
+];
+
+class WormGamePage extends StatefulWidget {
+  const WormGamePage({super.key});
   @override
-  State<ArrowGamePage> createState() => _ArrowGamePageState();
+  State<WormGamePage> createState() => _WormGamePageState();
 }
 
-class _ArrowGamePageState extends State<ArrowGamePage> {
-  static const int grid = 17;
-  int level = 1;
-  int removed = 0;
-  int hintIndex = -1;
-  bool won = false;
-  String message = 'اضغط على سهم طريقه مفتوح للخروج';
-  final List<ArrowPath> arrows = [];
-  final List<int> undo = [];
+class _WormGamePageState extends State<WormGamePage>
+    with SingleTickerProviderStateMixin {
+  late final Ticker _ticker;
+  Duration _lastTick = Duration.zero;
+  final math.Random _random = math.Random();
+  final List<Offset> _trail = <Offset>[];
+  final List<Offset> _foods = <Offset>[];
+  Offset _head = const Offset(.50, .52);
+  Offset _direction = const Offset(1, 0);
+  Offset _wantedDirection = const Offset(1, 0);
+  int _score = 0;
+  int _best = 0;
+  int _skinIndex = 0;
+  double _growth = .19;
+  bool _started = false;
+  bool _gameOver = false;
+  Size _boardSize = Size.zero;
+
+  SnakeSkin get _skin => skins[_skinIndex];
 
   @override
   void initState() {
     super.initState();
-    _newLevel();
+    _resetGame();
+    _ticker = createTicker(_onTick)..start();
   }
 
-  void _newLevel() {
-    arrows.clear();
-    undo.clear();
-    removed = 0;
-    hintIndex = -1;
-    won = false;
-    message = 'اضغط على سهم طريقه مفتوح للخروج';
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
 
-    final random = math.Random(31991 + level * 7919);
-    final occupied = <math.Point<int>>{};
-    final target = math.min(25 + level ~/ 3, 32);
-    var attempts = 0;
+  void _resetGame() {
+    _head = const Offset(.50, .52);
+    _direction = const Offset(1, 0);
+    _wantedDirection = const Offset(1, 0);
+    _trail
+      ..clear()
+      ..addAll(List<Offset>.generate(90, (i) => Offset(.50 - i * .0024, .52)));
+    _foods.clear();
+    for (var i = 0; i < 22; i++) {
+      _foods.add(_randomFood());
+    }
+    _score = 0;
+    _growth = .19;
+    _started = false;
+    _gameOver = false;
+    _lastTick = Duration.zero;
+  }
 
-    // Grow many separate, continuous, right-angled arrow paths.
-    // Shorter controlled walks make the board dense instead of producing
-    // only a handful of huge paths that stop after colliding.
-    while (arrows.length < target && attempts < target * 500) {
-      attempts++;
-      final start = math.Point<int>(
-        random.nextInt(grid),
-        random.nextInt(grid),
+  Offset _randomFood() => Offset(
+        .07 + _random.nextDouble() * .86,
+        .09 + _random.nextDouble() * .82,
       );
-      if (occupied.contains(start)) continue;
 
-      final path = <math.Point<int>>[start];
-      final local = <math.Point<int>>{start};
-      var previous = const math.Point<int>(0, 0);
-      final desiredLength = 7 + random.nextInt(9);
+  void _onTick(Duration elapsed) {
+    if (!mounted || !_started || _gameOver || _boardSize.isEmpty) return;
+    final previous = _lastTick;
+    _lastTick = elapsed;
+    if (previous == Duration.zero) return;
+    final dt = ((elapsed - previous).inMicroseconds / 1000000).clamp(0.0, .04);
+    if (dt <= 0) return;
 
-      for (var step = 1; step < desiredLength; step++) {
-        final directions = <math.Point<int>>[
-          const math.Point<int>(0, -1),
-          const math.Point<int>(0, 1),
-          const math.Point<int>(-1, 0),
-          const math.Point<int>(1, 0),
-        ]..shuffle(random);
+    final wantedAngle = math.atan2(_wantedDirection.dy, _wantedDirection.dx);
+    final currentAngle = math.atan2(_direction.dy, _direction.dx);
+    var difference = (wantedAngle - currentAngle + math.pi * 3) % (math.pi * 2) - math.pi;
+    final maxTurn = 3.15 * dt;
+    difference = difference.clamp(-maxTurn, maxTurn);
+    final angle = currentAngle + difference;
+    _direction = Offset(math.cos(angle), math.sin(angle));
+    final speed = .255 + math.min(_score, 100) * .00055;
+    _head = _head + _direction * (speed * dt);
+    _trail.insert(0, _head);
+    _trimTrail();
 
-        var advanced = false;
-        for (final direction in directions) {
-          // Avoid immediate U-turns; turns remain square like the reference.
-          if (direction.x == -previous.x &&
-              direction.y == -previous.y) {
-            continue;
-          }
-          final next = math.Point<int>(
-            path.last.x + direction.x,
-            path.last.y + direction.y,
-          );
-          if (next.x < 0 || next.x >= grid ||
-              next.y < 0 || next.y >= grid ||
-              occupied.contains(next) || local.contains(next)) {
-            continue;
-          }
-          path.add(next);
-          local.add(next);
-          previous = direction;
-          advanced = true;
-          break;
-        }
-        if (!advanced) break;
-      }
-
-      if (path.length < 6) continue;
-      arrows.add(ArrowPath(path));
-      occupied.addAll(path);
+    if (_head.dx < .035 || _head.dx > .965 || _head.dy < .045 || _head.dy > .955) {
+      _finishGame();
+      return;
     }
 
-    // If a rare random layout is too sparse, fill remaining open space
-    // with short straight arrows so every level starts with a full board.
-    if (arrows.length < 12) {
-      for (var y = 0; y < grid; y++) {
-        for (var x = 0; x < grid; x++) {
-          if (arrows.length >= 16) break;
-          final start = math.Point<int>(x, y);
-          if (occupied.contains(start)) continue;
-          final candidates = <List<math.Point<int>>>[
-            [start, math.Point<int>(x + 1, y), math.Point<int>(x + 2, y)],
-            [start, math.Point<int>(x, y + 1), math.Point<int>(x, y + 2)],
-          ];
-          for (final path in candidates) {
-            if (path.any((p) =>
-                p.x < 0 || p.x >= grid || p.y < 0 || p.y >= grid ||
-                occupied.contains(p))) {
-              continue;
-            }
-            arrows.add(ArrowPath(path));
-            occupied.addAll(path);
-            break;
-          }
-        }
+    final hitRadius = .028;
+    for (var i = _foods.length - 1; i >= 0; i--) {
+      if ((_foods[i] - _head).distance < hitRadius) {
+        _foods.removeAt(i);
+        _score += 10;
+        _growth += .022;
+        _foods.add(_randomFood());
       }
+    }
+
+    final body = _pointAtDistance(.09);
+    if ((_head - body).distance < .018 && _trail.length > 35) {
+      _finishGame();
+      return;
     }
     setState(() {});
   }
 
-  bool _isClear(int index) {
-    final arrow = arrows[index];
-    final d = arrow.direction;
-    var x = arrow.cells.last.x + d.x;
-    var y = arrow.cells.last.y + d.y;
-    while (x >= 0 && x < grid && y >= 0 && y < grid) {
-      for (var j = 0; j < arrows.length; j++) {
-        if (j == index || !arrows[j].alive) continue;
-        if (arrows[j].cells.any((p) => p.x == x && p.y == y)) return false;
-      }
-      x += d.x;
-      y += d.y;
+  void _trimTrail() {
+    var distance = 0.0;
+    var keep = 2;
+    for (var i = 1; i < _trail.length; i++) {
+      distance += (_trail[i - 1] - _trail[i]).distance;
+      keep = i + 1;
+      if (distance > _growth + .10) break;
     }
-    return true;
+    if (keep < _trail.length) _trail.removeRange(keep, _trail.length);
   }
 
-  void _tapArrow(Offset local, Size size) {
-    final cell = size.width / grid;
-    final x = (local.dx / cell).floor();
-    final y = (local.dy / cell).floor();
-    if (x < 0 || x >= grid || y < 0 || y >= grid) return;
-    var selected = -1;
-    var best = 999999;
-    for (var i = 0; i < arrows.length; i++) {
-      if (!arrows[i].alive) continue;
-      for (final p in arrows[i].cells) {
-        final distance = (p.x - x).abs() + (p.y - y).abs();
-        if (distance < best) { best = distance; selected = i; }
+  Offset _pointAtDistance(double wanted) {
+    var distance = 0.0;
+    for (var i = 1; i < _trail.length; i++) {
+      final segment = (_trail[i - 1] - _trail[i]).distance;
+      if (distance + segment >= wanted && segment > 0) {
+        return Offset.lerp(_trail[i - 1], _trail[i],
+            (wanted - distance) / segment)!;
       }
+      distance += segment;
     }
-    if (selected < 0 || best > 1) return;
-    setState(() {
-      if (_isClear(selected)) {
-        undo.add(selected);
-        arrows[selected].alive = false;
-        removed++;
-        hintIndex = -1;
-        won = arrows.every((a) => !a.alive);
-        message = won ? 'أحسنت! أكملت المرحلة' : 'خرج السهم بنجاح';
-      } else {
-        message = 'المسار مسدود، أزل السهم الذي يعترضه أولاً';
-      }
-    });
+    return _trail.isEmpty ? _head : _trail.last;
   }
 
-  void _hint() {
-    setState(() {
-      for (var i = 0; i < arrows.length; i++) {
-        if (arrows[i].alive && _isClear(i)) {
-          hintIndex = i;
-          message = 'هذا السهم يمكنه الخروج الآن';
-          return;
-        }
-      }
-      message = 'حاول فتح الطريق من الأسهم الخارجية';
-    });
+  void _finishGame() {
+    _gameOver = true;
+    _best = math.max(_best, _score);
+    setState(() {});
   }
 
-  void _undo() {
-    setState(() {
-      if (undo.isEmpty) {
-        message = 'لا توجد حركة للتراجع';
-        return;
-      }
-      final index = undo.removeLast();
-      arrows[index].alive = true;
-      removed = removed > 0 ? removed - 1 : 0;
-      won = false;
-      message = 'تم التراجع عن آخر حركة';
-    });
+  void _steer(Offset local) {
+    if (_gameOver) return;
+    if (!_started) {
+      _started = true;
+      _lastTick = Duration.zero;
+    }
+    final target = Offset(local.dx / _boardSize.width, local.dy / _boardSize.height);
+    final delta = target - _head;
+    if (delta.distance > .015) {
+      _wantedDirection = delta / delta.distance;
+    }
+    setState(() {});
   }
+
+  void _chooseSkin(int index) => setState(() => _skinIndex = index);
 
   @override
   Widget build(BuildContext context) {
-    final percent = arrows.isEmpty ? 0 : (removed * 100 / arrows.length).round();
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: LayoutBuilder(builder: (context, constraints) {
-          final boardSide = math.min(constraints.maxWidth - 34, constraints.maxHeight * .55).toDouble();
-          return Column(
-            children: [
-              const SizedBox(height: 18),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  children: [
-                    _roundIcon(Icons.chevron_left, () {}),
-                    const SizedBox(width: 10),
-                    Expanded(child: _infoBox('Level', '$level')),
-                    const SizedBox(width: 8),
-                    Expanded(child: _infoBox('↑   ↑   ↑', '')),
-                    const SizedBox(width: 8),
-                    Expanded(child: _infoBox('$percent%', '')),
-                    const SizedBox(width: 10),
-                    _roundIcon(Icons.refresh, _newLevel),
-                  ],
-                ),
-              ),
-              const Spacer(),
-              Center(
-                child: SizedBox(
-                  width: boardSide,
-                  height: boardSide,
-                  child: GestureDetector(
-                    onTapDown: (details) => _tapArrow(details.localPosition, Size(boardSide, boardSide)),
-                    child: CustomPaint(
-                      painter: ArrowBoardPainter(arrows, hintIndex),
-                      child: const SizedBox.expand(),
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xff153d31), Color(0xff09251f), Color(0xff071b19)],
+          ),
+        ),
+        child: SafeArea(
+          child: LayoutBuilder(builder: (context, constraints) {
+            final boardSide = math.min(
+              constraints.maxWidth - 24,
+              constraints.maxHeight * .66,
+            ).toDouble();
+            _boardSize = Size.square(boardSide);
+            return Column(
+              children: [
+                const SizedBox(height: 8),
+                _topBar(),
+                const SizedBox(height: 12),
+                _scoreBar(),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: Center(
+                    child: SizedBox(
+                      width: boardSide,
+                      height: boardSide,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onPanStart: (d) => _steer(d.localPosition),
+                        onPanUpdate: (d) => _steer(d.localPosition),
+                        onTapDown: (d) => _steer(d.localPosition),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(24),
+                          child: CustomPaint(
+                            painter: ArenaPainter(
+                              trail: _trail,
+                              foods: _foods,
+                              skin: _skin,
+                              score: _score,
+                              gameOver: _gameOver,
+                            ),
+                            child: const SizedBox.expand(),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const Spacer(),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(message, textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 17, color: Color(0xff30303a))),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _roundIcon(Icons.undo, _undo),
-                  const SizedBox(width: 34),
-                  _roundIcon(Icons.lightbulb_outline, _hint),
-                ],
-              ),
-              const SizedBox(height: 22),
-              GestureDetector(
-                onTap: () {
-                  if (won) level++;
-                  _newLevel();
-                },
-                child: Container(
-                  width: double.infinity,
-                  height: 76,
-                  alignment: Alignment.center,
-                  color: const Color(0xff777589),
-                  child: Text(won ? 'NEXT LEVEL' : 'CLEAR IT!',
-                    style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w800)),
-                ),
-              ),
-            ],
-          );
-        }),
+                const SizedBox(height: 10),
+                _skinPicker(),
+                const SizedBox(height: 8),
+                _bottomHint(),
+                const SizedBox(height: 10),
+              ],
+            );
+          }),
+        ),
       ),
     );
   }
 
-  Widget _roundIcon(IconData icon, VoidCallback onTap) => Material(
-    color: const Color(0xfff1f2f7),
-    shape: const CircleBorder(),
-    child: InkWell(onTap: onTap, customBorder: const CircleBorder(),
-      child: SizedBox(width: 48, height: 48, child: Icon(icon, color: const Color(0xff777789), size: 27))),
-  );
+  Widget _topBar() => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            _circleButton(Icons.menu_rounded, () => _showMenu()),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'WORM ARENA',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0xffeaffd8),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 2.2,
+                  shadows: [Shadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 3))],
+                ),
+              ),
+            ),
+            _circleButton(Icons.refresh_rounded, () => setState(_resetGame)),
+          ],
+        ),
+      );
 
-  Widget _infoBox(String top, String bottom) => Container(
-    height: 54,
-    decoration: BoxDecoration(color: const Color(0xfff1f2f7), borderRadius: BorderRadius.circular(15)),
-    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-      Text(top, style: const TextStyle(color: Color(0xff858594), fontSize: 15, fontWeight: FontWeight.w600)),
-      if (bottom.isNotEmpty) Text(bottom, style: const TextStyle(color: Color(0xff41414e), fontSize: 21, height: 1)),
-    ]),
-  );
+  Widget _scoreBar() => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 22),
+        child: Row(
+          children: [
+            Expanded(child: _statPill('SCORE', '$_score', Icons.stars_rounded)),
+            const SizedBox(width: 10),
+            Expanded(child: _statPill('BEST', '$_best', Icons.emoji_events_rounded)),
+          ],
+        ),
+      );
+
+  Widget _statPill(String label, String value, IconData icon) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: const Color(0xff214b3b).withValues(alpha: .9),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xff8bcf70).withValues(alpha: .35)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: const Color(0xffffd66b), size: 19),
+            const SizedBox(width: 7),
+            Text(label, style: const TextStyle(color: Color(0xffa8c8ad), fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1)),
+            const SizedBox(width: 8),
+            Text(value, style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w900)),
+          ],
+        ),
+      );
+
+  Widget _skinPicker() => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Column(
+          children: [
+            const Text('CHOOSE YOUR WORM', style: TextStyle(color: Color(0xffb8d5bb), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List<Widget>.generate(skins.length, (index) {
+                final skin = skins[index];
+                final selected = index == _skinIndex;
+                return GestureDetector(
+                  onTap: () => _chooseSkin(index),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    margin: const EdgeInsets.symmetric(horizontal: 5),
+                    width: selected ? 43 : 37,
+                    height: selected ? 43 : 37,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [skin.primary, skin.secondary]),
+                      border: Border.all(color: selected ? Colors.white : Colors.white24, width: selected ? 3 : 1),
+                      boxShadow: selected ? [BoxShadow(color: skin.primary.withValues(alpha: .5), blurRadius: 13, spreadRadius: 2)] : [],
+                    ),
+                    child: selected ? const Icon(Icons.check_rounded, color: Colors.white, size: 22) : null,
+                  ),
+                );
+              }),
+            ),
+            const SizedBox(height: 5),
+            Text(_skin.name, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700)),
+          ],
+        ),
+      );
+
+  Widget _bottomHint() => const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16),
+        child: Text(
+          'اسحب إصبعك داخل الساحة لتوجيه الأفعى واجمع الطعام حتى تكبر!',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Color(0xffa8c5ad), fontSize: 12, fontWeight: FontWeight.w600),
+        ),
+      );
+
+  Widget _circleButton(IconData icon, VoidCallback onTap) => Material(
+        color: const Color(0xff28523f),
+        shape: const CircleBorder(),
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: SizedBox(
+            width: 43,
+            height: 43,
+            child: Icon(icon, color: const Color(0xffe5f8df), size: 23),
+          ),
+        ),
+      );
+
+  void _showMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xff173c30),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('WORM ARENA', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 22, letterSpacing: 2)),
+            const SizedBox(height: 12),
+            const Text('تحكم بالأفعى، اجمع الطعام، وابتعد عن حواف الساحة وعن جسمك.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, height: 1.5)),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: () { Navigator.pop(context); setState(_resetGame); },
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: const Text('ابدأ من جديد'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-class ArrowBoardPainter extends CustomPainter {
-  ArrowBoardPainter(this.arrows, this.hintIndex);
-  final List<ArrowPath> arrows;
-  final int hintIndex;
+class ArenaPainter extends CustomPainter {
+  ArenaPainter({
+    required this.trail,
+    required this.foods,
+    required this.skin,
+    required this.score,
+    required this.gameOver,
+  });
+
+  final List<Offset> trail;
+  final List<Offset> foods;
+  final SnakeSkin skin;
+  final int score;
+  final bool gameOver;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final cell = size.width / 17;
-    final strokeWidth = math.max(2.0, cell * .12).toDouble();
-    final linePaint = Paint()
-      ..color = const Color(0xff080808)
+    final rect = Offset.zero & size;
+    final background = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xff367b48), Color(0xff225b3c), Color(0xff174832)],
+      ).createShader(rect);
+    canvas.drawRect(rect, background);
+
+    final gridPaint = Paint()
+      ..color = const Color(0x18d9f4b7)
+      ..strokeWidth = 1;
+    const gridCount = 14;
+    for (var i = 1; i < gridCount; i++) {
+      final p = size.width * i / gridCount;
+      canvas.drawLine(Offset(p, 0), Offset(p, size.height), gridPaint);
+      canvas.drawLine(Offset(0, p), Offset(size.width, p), gridPaint);
+    }
+
+    final random = math.Random(24);
+    final grassPaint = Paint()..color = const Color(0x2779b65b);
+    for (var i = 0; i < 90; i++) {
+      final x = random.nextDouble() * size.width;
+      final y = random.nextDouble() * size.height;
+      canvas.drawCircle(Offset(x, y), 1.1 + random.nextDouble() * 1.6, grassPaint);
+    }
+
+    final border = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..isAntiAlias = true;
-    final arrowPaint = Paint()
-      ..color = const Color(0xff080808)
-      ..style = PaintingStyle.fill
-      ..isAntiAlias = true;
+      ..strokeWidth = 5
+      ..color = const Color(0xffa9d879);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect.deflate(2.5), const Radius.circular(22)),
+      border,
+    );
 
-    for (var i = 0; i < arrows.length; i++) {
-      if (!arrows[i].alive) continue;
-      final points = arrows[i].cells
-          .map((p) => Offset((p.x + .5) * cell, (p.y + .5) * cell))
-          .toList(growable: false);
-      if (points.length < 2) continue;
+    _drawFood(canvas, size);
+    _drawSnake(canvas, size);
 
-      final path = Path()..moveTo(points.first.dx, points.first.dy);
-      for (var j = 1; j < points.length; j++) {
-        path.lineTo(points[j].dx, points[j].dy);
-      }
-      canvas.drawPath(path, linePaint);
-
-      final tip = points.last;
-      final d = arrows[i].direction;
-      final direction = Offset(d.x.toDouble(), d.y.toDouble());
-      final side = Offset(-direction.dy, direction.dx);
-      final headLength = cell * .34;
-      final headHalfWidth = cell * .23;
-      final triangle = Path()
-        ..moveTo(tip.dx, tip.dy)
-        ..lineTo(
-          tip.dx - direction.dx * headLength + side.dx * headHalfWidth,
-          tip.dy - direction.dy * headLength + side.dy * headHalfWidth,
-        )
-        ..lineTo(
-          tip.dx - direction.dx * headLength - side.dx * headHalfWidth,
-          tip.dy - direction.dy * headLength - side.dy * headHalfWidth,
-        )
-        ..close();
-      canvas.drawPath(triangle, arrowPaint);
-
-      if (i == hintIndex) {
-        canvas.drawCircle(
-          tip,
-          cell * .42,
-          Paint()..color = const Color(0x33ffbf00)..isAntiAlias = true,
-        );
-      }
+    if (!gameOver && score == 0) {
+      final shade = Paint()..color = const Color(0x22000000);
+      canvas.drawRect(rect, shade);
+      _drawCenterLabel(canvas, size, 'TOUCH & STEER', 'اسحب داخل الساحة للبدء');
+    }
+    if (gameOver) {
+      canvas.drawRect(rect, Paint()..color = const Color(0xaa061b14));
+      _drawCenterLabel(canvas, size, 'GAME OVER', 'اضغط زر التحديث للعب مرة ثانية');
     }
   }
 
+  void _drawFood(Canvas canvas, Size size) {
+    for (var i = 0; i < foods.length; i++) {
+      final p = Offset(foods[i].dx * size.width, foods[i].dy * size.height);
+      final radius = size.width * (.010 + (i % 3) * .0015);
+      canvas.drawCircle(p, radius * 2.3, Paint()..color = const Color(0x22ffe57a)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7));
+      final paint = Paint()
+        ..shader = RadialGradient(
+          colors: [const Color(0xfffff5ad), i.isEven ? const Color(0xffffb52f) : const Color(0xfff46d3d), const Color(0xffbd3d28)],
+          stops: const [0, .55, 1],
+        ).createShader(Rect.fromCircle(center: p, radius: radius * 1.5));
+      canvas.drawCircle(p, radius * 1.5, paint);
+      canvas.drawCircle(p.translate(-radius * .35, -radius * .4), radius * .28, Paint()..color = Colors.white70);
+      final leaf = Path()
+        ..moveTo(p.dx + radius * .15, p.dy - radius * 1.2)
+        ..quadraticBezierTo(p.dx + radius * 1.4, p.dy - radius * 2, p.dx + radius * 1.2, p.dy - radius * .65)
+        ..quadraticBezierTo(p.dx + radius * .55, p.dy - radius * .55, p.dx + radius * .15, p.dy - radius * 1.2);
+      canvas.drawPath(leaf, Paint()..color = const Color(0xffb7ef65));
+    }
+  }
+
+  void _drawSnake(Canvas canvas, Size size) {
+    if (trail.isEmpty) return;
+    final points = trail.map((p) => Offset(p.dx * size.width, p.dy * size.height)).toList();
+    final radius = size.width * .023;
+    if (points.length > 1) {
+      final bodyPath = Path()..moveTo(points.first.dx, points.first.dy);
+      for (var i = 1; i < points.length; i++) {
+        bodyPath.lineTo(points[i].dx, points[i].dy);
+      }
+      canvas.drawPath(
+        bodyPath,
+        Paint()
+          ..color = const Color(0x66000000)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = radius * 2.25
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
+      );
+      canvas.drawPath(
+        bodyPath,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [skin.accent, skin.primary, skin.secondary, skin.primary],
+          ).createShader(Offset.zero & size)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = radius * 1.95
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..isAntiAlias = true,
+      );
+      canvas.drawPath(
+        bodyPath,
+        Paint()
+          ..color = skin.accent.withValues(alpha: .58)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = radius * .34
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round,
+      );
+
+      for (var i = 4; i < points.length; i += 8) {
+        final p = points[i];
+        final scale = 1 - (i / points.length) * .25;
+        canvas.drawCircle(
+          p.translate(-radius * .12, -radius * .22),
+          radius * .17 * scale,
+          Paint()..color = skin.accent.withValues(alpha: .5),
+        );
+      }
+    }
+
+    final head = points.first;
+    final direction = points.length > 1 ? (points[0] - points[1]) : const Offset(1, 0);
+    final angle = math.atan2(direction.dy, direction.dx);
+    canvas.save();
+    canvas.translate(head.dx, head.dy);
+    canvas.rotate(angle);
+    canvas.drawOval(
+      Rect.fromCenter(center: Offset.zero, width: radius * 2.5, height: radius * 2.15),
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [skin.accent, skin.primary, skin.secondary],
+        ).createShader(Rect.fromCenter(center: Offset.zero, width: radius * 2.5, height: radius * 2.15)),
+    );
+    canvas.drawOval(
+      Rect.fromCenter(center: Offset(-radius * .1, -radius * .48), width: radius * 1.45, height: radius * .45),
+      Paint()..color = Colors.white.withValues(alpha: .28),
+    );
+    for (final side in [-1.0, 1.0]) {
+      final eye = Offset(radius * .55, radius * side * .58);
+      canvas.drawCircle(eye, radius * .34, Paint()..color = Colors.white);
+      canvas.drawCircle(eye.translate(radius * .08, 0), radius * .19, Paint()..color = const Color(0xff172a22));
+      canvas.drawCircle(eye.translate(radius * .13, -radius * .07), radius * .065, Paint()..color = Colors.white);
+    }
+    final smile = Path()
+      ..moveTo(radius * 1.0, radius * .05)
+      ..quadraticBezierTo(radius * 1.28, radius * .22, radius * .98, radius * .38);
+    canvas.drawPath(smile, Paint()..color = const Color(0xff5c2924)..style = PaintingStyle.stroke..strokeWidth = radius * .10..strokeCap = StrokeCap.round);
+    canvas.restore();
+  }
+
+  void _drawCenterLabel(Canvas canvas, Size size, String title, String subtitle) {
+    final titlePainter = TextPainter(
+      text: TextSpan(text: title, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 2, shadows: [Shadow(color: Colors.black54, blurRadius: 8)])),
+      textDirection: TextDirection.ltr,
+      textAlign: TextAlign.center,
+    )..layout(maxWidth: size.width - 20);
+    final subPainter = TextPainter(
+      text: TextSpan(text: subtitle, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700, shadows: [Shadow(color: Colors.black54, blurRadius: 5)])),
+      textDirection: TextDirection.rtl,
+      textAlign: TextAlign.center,
+    )..layout(maxWidth: size.width - 20);
+    titlePainter.paint(canvas, Offset((size.width - titlePainter.width) / 2, size.height * .43));
+    subPainter.paint(canvas, Offset((size.width - subPainter.width) / 2, size.height * .43 + 34));
+  }
+
   @override
-  bool shouldRepaint(covariant ArrowBoardPainter oldDelegate) =>
-      oldDelegate.arrows != arrows || oldDelegate.hintIndex != hintIndex;
+  bool shouldRepaint(covariant ArenaPainter oldDelegate) => true;
 }
