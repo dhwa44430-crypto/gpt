@@ -7,5 +7,6 @@ void main() {
     expect(find.text('WORM ARENA'), findsOneWidget);
     expect(find.text('CHOOSE YOUR WORM'), findsOneWidget);
     expect(find.text('Lime'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 }
