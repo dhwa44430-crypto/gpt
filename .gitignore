@@ -1,5 +1,11 @@
-.godot/
-.import/
-.export/
+.dart_tool/
+.packages
+.pub-cache/
 build/
-*.tmp
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+.idea/
+.vscode/
+*.iml
+.DS_Store
