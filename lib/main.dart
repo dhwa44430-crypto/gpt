@@ -162,7 +162,7 @@ class _ArrowGamePageState extends State<ArrowGamePage> {
       }
       final index = undo.removeLast();
       arrows[index].alive = true;
-      removed = math.max(0, removed - 1);
+      removed = removed > 0 ? removed - 1 : 0;
       won = false;
       message = 'تم التراجع عن آخر حركة';
     });
@@ -175,7 +175,7 @@ class _ArrowGamePageState extends State<ArrowGamePage> {
       backgroundColor: Colors.white,
       body: SafeArea(
         child: LayoutBuilder(builder: (context, constraints) {
-          final boardSide = math.min(constraints.maxWidth - 34, constraints.maxHeight * .55);
+          final boardSide = math.min(constraints.maxWidth - 34, constraints.maxHeight * .55).toDouble();
           return Column(
             children: [
               const SizedBox(height: 18),
