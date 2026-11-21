@@ -9,7 +9,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  wortise: ^1.8.2
 
 dev_dependencies:
   flutter_test:
