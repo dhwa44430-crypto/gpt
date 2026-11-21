@@ -17,12 +17,12 @@ class ArrowEscapeApp extends StatelessWidget {
 
 class ArrowPath {
   ArrowPath(this.cells);
-  final List<Point<int>> cells;
+  final List<math.Point<int>> cells;
   bool alive = true;
-  Point<int> get direction {
+  math.Point<int> get direction {
     final a = cells[cells.length - 2];
     final b = cells.last;
-    return Point(b.x - a.x, b.y - a.y);
+    return math.Point<int>(b.x - a.x, b.y - a.y);
   }
 }
 
@@ -56,29 +56,29 @@ class _ArrowGamePageState extends State<ArrowGamePage> {
     won = false;
     message = 'اضغط على سهم طريقه مفتوح للخروج';
     final random = math.Random(31991 + level * 7919);
-    final occupied = <Point<int>>{};
+    final occupied = <math.Point<int>>{};
     final target = math.min(24 + level * 2, 48);
     var tries = 0;
     while (arrows.length < target && tries < target * 100) {
       tries++;
-      final start = Point(random.nextInt(grid - 2) + 1, random.nextInt(grid - 2) + 1);
+      final start = math.Point<int>(random.nextInt(grid - 2) + 1, random.nextInt(grid - 2) + 1);
       if (occupied.contains(start)) continue;
-      final path = <Point<int>>[start];
-      final local = <Point<int>>{start};
-      var last = const Point<int>(0, 0);
+      final path = <math.Point<int>>[start];
+      final local = <math.Point<int>>{start};
+      var last = const math.Point<int>(0, 0);
       final steps = 4 + random.nextInt(6);
       for (var step = 0; step < steps; step++) {
-        final dirs = <Point<int>>[
-          const Point(0, -1), const Point(0, 1),
-          const Point(-1, 0), const Point(1, 0),
+        final dirs = <math.Point<int>>[
+          const math.Point<int>(0, -1), const math.Point<int>(0, 1),
+          const math.Point<int>(-1, 0), const math.Point<int>(1, 0),
         ];
         if (last.x != 0 || last.y != 0) {
-          if (random.nextBool()) dirs.remove(Point(-last.x, -last.y));
+          if (random.nextBool()) dirs.remove(math.Point<int>(-last.x, -last.y));
         }
         dirs.shuffle(random);
         var advanced = false;
         for (final d in dirs) {
-          final q = Point(path.last.x + d.x, path.last.y + d.y);
+          final q = math.Point<int>(path.last.x + d.x, path.last.y + d.y);
           if (q.x < 0 || q.x >= grid || q.y < 0 || q.y >= grid ||
               occupied.contains(q) || local.contains(q)) continue;
           path.add(q);
@@ -219,7 +219,7 @@ class _ArrowGamePageState extends State<ArrowGamePage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _roundIcon(Icons.palette_outlined, () {}),
+                  _roundIcon(Icons.undo, _undo),
                   const SizedBox(width: 34),
                   _roundIcon(Icons.lightbulb_outline, _hint),
                 ],
