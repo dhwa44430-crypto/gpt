@@ -58,7 +58,7 @@ class _ArrowGamePageState extends State<ArrowGamePage> {
     message = 'اضغط على سهم طريقه مفتوح للخروج';
     final random = math.Random(31991 + level * 7919);
     final occupied = <math.Point<int>>{};
-    final target = math.min(18 + level, 32);
+    final target = math.min(24 + level, 38);
     var tries = 0;
     while (arrows.length < target && tries < target * 100) {
       tries++;
@@ -67,7 +67,7 @@ class _ArrowGamePageState extends State<ArrowGamePage> {
       final path = <math.Point<int>>[start];
       final local = <math.Point<int>>{start};
       var last = const math.Point<int>(0, 0);
-      final steps = 4 + random.nextInt(6);
+      final steps = 9 + random.nextInt(10);
       for (var step = 0; step < steps; step++) {
         final dirs = <math.Point<int>>[
           const math.Point<int>(0, -1), const math.Point<int>(0, 1),
@@ -81,8 +81,7 @@ class _ArrowGamePageState extends State<ArrowGamePage> {
         for (final d in dirs) {
           final q = math.Point<int>(path.last.x + d.x, path.last.y + d.y);
           if (q.x < 0 || q.x >= grid || q.y < 0 || q.y >= grid ||
-              occupied.contains(q) || local.contains(q) ||
-              _tooCloseToOtherPath(q, occupied)) {
+              occupied.contains(q)) {
             continue;
           }
           path.add(q);
